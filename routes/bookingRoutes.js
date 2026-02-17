@@ -7,7 +7,8 @@ const {
     getUserBookings,
     updateBookingStatus,
     updatePaymentStatus,
-    cancelBooking
+    cancelBooking,
+    verifyPayment
 } = require('../controllers/BookingController');
 const bookingUploadMiddleware = require('../middleware/bookingUploadMiddleware');
 
@@ -31,5 +32,8 @@ router.put('/bookings/:id/payment', updatePaymentStatus);
 
 // Cancel booking
 router.delete('/bookings/:id', cancelBooking);
+
+// Verify payment
+router.post('/verify-payment', verifyPayment);
 
 module.exports = router;
