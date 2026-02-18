@@ -19,6 +19,11 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Static Files - Make the Uploads folder accessible via URL
+const path = require('path');
+app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
+app.use('/TripImages', express.static(path.join(__dirname, 'TripImages')));
+
 // Request logging
 app.use((req, res, next) => {
   logger.info(req.method + ' ' + req.url);
