@@ -448,7 +448,7 @@ const deleteTrip = asyncHandler(async (req, res) => {
       });
     }
 
-    // 2️⃣ Soft delete (set deleted = 1)
+    // 2️⃣ Soft delete trip (set deleted = 1)
     const deleteQuery = `
       UPDATE trips
       SET deleted = B'1',
@@ -459,9 +459,26 @@ const deleteTrip = asyncHandler(async (req, res) => {
 
     const deleteResult = await executeQuery(deleteQuery, [id]);
 
+    // 3️⃣ Cascading Soft delete for itineraries
+    const deleteItinQuery = `
+      UPDATE itineraries
+      SET deleted = 1,
+          dateofmodification = NOW()
+      WHERE trip_id = $1
+    `;
+    await executeQuery(deleteItinQuery, [id]);
+
+    // 4️⃣ Cascading Soft delete for galleries
+    const deleteGalleryQuery = `
+      UPDATE galleries
+      SET deleted = 1
+      WHERE trip_id = $1
+    `;
+    await executeQuery(deleteGalleryQuery, [id]);
+
     return res.status(200).json({
       success: true,
-      message: "Trip deleted successfully",
+      message: "Trip and associated data deleted successfully",
       data: deleteResult.rows[0],
     });
   } catch (error) {

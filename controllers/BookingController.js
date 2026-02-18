@@ -82,8 +82,8 @@ const createBooking = async (req, res) => {
 
         const booking = result.rows[0];
 
-        // Create Razorpay Order for 10% token amount
-        const tokenAmount = Math.round(total_amount * 0.10);
+        // Create Razorpay Order for 1% token amount
+        const tokenAmount = Math.round(total_amount * 0.01);
         const options = {
             amount: tokenAmount * 100, // amount in the smallest currency unit (paise)
             currency: "INR",

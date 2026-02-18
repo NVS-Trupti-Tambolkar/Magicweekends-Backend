@@ -4,10 +4,21 @@
 -- ============================================
 
 -- Create ENUM types for better data integrity
-CREATE TYPE payment_status_enum AS ENUM ('pending', 'paid', 'failed', 'refunded');
-CREATE TYPE booking_status_enum AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
-CREATE TYPE trip_type_enum AS ENUM ('normal', 'weekend');
-CREATE TYPE payment_method_enum AS ENUM ('paytm', 'gpay', 'bank_transfer', 'cash');
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status_enum') THEN
+        CREATE TYPE payment_status_enum AS ENUM ('pending', 'paid', 'failed', 'refunded');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_status_enum') THEN
+        CREATE TYPE booking_status_enum AS ENUM ('pending', 'confirmed', 'cancelled', 'completed');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'trip_type_enum') THEN
+        CREATE TYPE trip_type_enum AS ENUM ('normal', 'weekend');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_method_enum') THEN
+        CREATE TYPE payment_method_enum AS ENUM ('paytm', 'gpay', 'bank_transfer', 'cash');
+    END IF;
+END $$;
 
 -- ============================================
 -- Main Bookings Table

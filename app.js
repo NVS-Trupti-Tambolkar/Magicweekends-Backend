@@ -13,7 +13,7 @@ const app = express();
 // Middleware
 // app.use(helmet()); // Commented out for now
 app.use(cors({
-  origin: "https://magicweekend.netlify.app",
+  origin: ["https://magicweekend.netlify.app", "http://localhost:3000"],
   credentials: true
 }));
 app.use(express.json());

@@ -335,9 +335,26 @@ const deleteWeekendTrip = asyncHandler(async (req, res) => {
             });
         }
 
+        // Cascading Soft delete for itineraries
+        const deleteItinQuery = `
+          UPDATE itineraries
+          SET deleted = 1,
+              dateofmodification = NOW()
+          WHERE trip_id = $1
+        `;
+        await executeQuery(deleteItinQuery, [id]);
+
+        // Cascading Soft delete for galleries
+        const deleteGalleryQuery = `
+          UPDATE galleries
+          SET deleted = 1
+          WHERE trip_id = $1
+        `;
+        await executeQuery(deleteGalleryQuery, [id]);
+
         res.status(200).json({
             success: true,
-            message: "Weekend trip deleted successfully",
+            message: "Weekend trip and associated data deleted successfully",
             data: result.rows[0]
         });
     } catch (error) {

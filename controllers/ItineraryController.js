@@ -252,6 +252,41 @@ const deleteItinerary = asyncHandler(async (req, res) => {
   }
 });
 
+const deleteItinerariesByTrip = asyncHandler(async (req, res) => {
+  const { trip_id } = req.query;
+
+  if (!trip_id) {
+    return res.status(400).json({
+      success: false,
+      message: "trip_id is required"
+    });
+  }
+
+  try {
+    const query = `
+      UPDATE itineraries
+      SET deleted = 1,
+          dateofmodification = NOW()
+      WHERE trip_id = $1
+    `;
+
+    const result = await executeQuery(query, [parseInt(trip_id)]);
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${result.rowCount} itineraries for trip ${trip_id}`
+    });
+
+  } catch (error) {
+    console.error("DeleteItinerariesByTrip error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Database error",
+      error: error.message
+    });
+  }
+});
+
 
 
 
@@ -259,5 +294,6 @@ module.exports = {
   insertItineraries,
   getItinerariesByTrip,
   updateItinerary,
-  deleteItinerary
+  deleteItinerary,
+  deleteItinerariesByTrip
 };

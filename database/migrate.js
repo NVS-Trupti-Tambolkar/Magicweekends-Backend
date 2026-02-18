@@ -4,21 +4,28 @@ const path = require('path');
 
 async function runMigration() {
     try {
-        console.log('📦 Reading SQL schema file...');
-        const sql = fs.readFileSync(
+        console.log('📦 Reading SQL schema files...');
+        const bookingSql = fs.readFileSync(
             path.join(__dirname, 'booking_schema.sql'),
+            'utf8'
+        );
+        const tripSql = fs.readFileSync(
+            path.join(__dirname, 'trip_weekend_schema.sql'),
             'utf8'
         );
 
         console.log('🔄 Executing database migration...');
-        await pool.query(sql);
+        await pool.query(bookingSql);
+        await pool.query(tripSql);
 
         console.log('✅ Database schema created successfully!');
-        console.log('\n📋 Tables created:');
+        console.log('\n📋 Tables created/updated:');
         console.log('   - bookings');
+        console.log('   - trips');
+        console.log('   - weekendtrips');
         console.log('\n📋 Views created:');
         console.log('   - bookings_view');
-        console.log('\n📋 ENUM types created:');
+        console.log('\n📋 ENUM types created (or already exist):');
         console.log('   - payment_status_enum');
         console.log('   - booking_status_enum');
         console.log('   - trip_type_enum');
