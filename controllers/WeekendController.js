@@ -38,8 +38,7 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
     }
 
     try {
-        const filePath = file.path.replace(/\\/g, '/');
-        const relativePath = path.relative(path.join(__dirname, '..'), filePath);
+        const imageUrl = file.path;
 
         const query = `
       INSERT INTO weekendtrips (
@@ -72,7 +71,7 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
         const params = [
             title,
             duration,
-            relativePath,
+            imageUrl,
             parseInt(tours),
             price,
             difficulty,
@@ -262,12 +261,10 @@ const updateWeekendTrip = asyncHandler(async (req, res) => {
 
         let imagePath = null;
         if (file) {
-            const filePath = file.path.replace(/\\/g, '/');
-            const relativePath = path.relative(path.join(__dirname, '..'), filePath);
             paramCount++;
             updateFields.push(`uploadimage = $${paramCount}`);
-            params.push(relativePath);
-            imagePath = relativePath;
+            params.push(file.path);
+            imagePath = file.path;
         }
 
         if (updateFields.length === 0) {
@@ -293,14 +290,6 @@ const updateWeekendTrip = asyncHandler(async (req, res) => {
 
         const result = await executeQuery(query, params);
 
-        // Delete old image if new one is uploaded
-        if (imagePath && checkTrip.rows[0].uploadimage && checkTrip.rows[0].uploadimage !== imagePath) {
-            const oldPath = path.join(__dirname, '..', checkTrip.rows[0].uploadimage);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
-            }
-        }
-
         res.status(200).json({
             success: true,
             message: "Weekend trip updated successfully",
@@ -308,9 +297,6 @@ const updateWeekendTrip = asyncHandler(async (req, res) => {
         });
     } catch (error) {
         console.error("UpdateWeekendTrip error:", error);
-        if (file && fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-        }
         res.status(500).json({
             success: false,
             message: "Failed to update weekend trip",

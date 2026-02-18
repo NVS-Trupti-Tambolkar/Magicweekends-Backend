@@ -39,9 +39,8 @@ const createBooking = async (req, res) => {
                 if (match && match[1]) {
                     const index = parseInt(match[1]);
                     if (travelers_data[index]) {
-                        // Store relative path
-                        const relativePath = file.path.replace(/\\/g, '/').split('backend/')[1] || file.path.replace(/\\/g, '/');
-                        travelers_data[index].id_proof_image = relativePath;
+                        // Use the Cloudinary URL directly
+                        travelers_data[index].id_proof_image = file.path;
                     }
                 }
             });
