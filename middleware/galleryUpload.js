@@ -9,24 +9,18 @@ if (!fs.existsSync(baseUploadDir)) {
   fs.mkdirSync(baseUploadDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // folder_name may come from body (insert) or existing folder (update)
+const cloudinary = require('../config/cloudinary');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
     const folderName = req.body.folder_name || req.body.existing_folder || 'default';
-
-    const folderPath = path.join(baseUploadDir, folderName);
-
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-    }
-
-    cb(null, folderPath);
-  },
-
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `gallery-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    cb(null, uniqueName);
+    return {
+      folder: `MagicWeekends/Gallery/${folderName}`,
+      allowed_formats: ['jpg', 'png', 'jpeg', 'gif', 'webp'],
+      public_id: `gallery-${Date.now()}-${Math.round(Math.random() * 1e9)}`
+    };
   }
 });
 

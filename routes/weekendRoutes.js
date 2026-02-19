@@ -7,18 +7,12 @@ const {
     updateWeekendTrip,
     deleteWeekendTrip
 } = require('../controllers/WeekendController');
-const upload = require('../config/multer');
+const weekendUploadMiddleware = require('../middleware/weekendUploadMiddleware');
 
-router.post('/insertWeekendTrip', upload.fields([
-    { name: 'uploadimage', maxCount: 1 },
-    { name: 'image', maxCount: 1 }
-]), insertWeekendTrip);
+router.post('/insertWeekendTrip', weekendUploadMiddleware, insertWeekendTrip);
 router.get('/getWeekendallTrips', getWeekendTrips);
 router.get('/getWeekendTripById', getWeekendTripById);
-router.put('/updateWeekendTrip', upload.fields([
-    { name: 'uploadimage', maxCount: 1 },
-    { name: 'image', maxCount: 1 }
-]), updateWeekendTrip);
-router.delete('/deleteWeekendTrip', upload.none(), deleteWeekendTrip);
+router.put('/updateWeekendTrip', weekendUploadMiddleware, updateWeekendTrip);
+router.delete('/deleteWeekendTrip', weekendUploadMiddleware, deleteWeekendTrip);
 
 module.exports = router;
