@@ -38,8 +38,7 @@ const insertTripDirect = asyncHandler(async (req, res) => {
   }
 
   try {
-    const filePath = file.path.replace(/\\/g, '/');
-    const relativePath = path.relative(path.join(__dirname, '..'), filePath);
+    const imageUrl = file.path;
 
     const query = `
       INSERT INTO trips (
@@ -71,7 +70,7 @@ const insertTripDirect = asyncHandler(async (req, res) => {
     const params = [
       title,
       duration,
-      relativePath,
+      imageUrl,
       parseInt(tours),
       price,
       difficulty,
@@ -293,14 +292,10 @@ const updateTrip = asyncHandler(async (req, res) => {
 
     let imagePath = null;
     if (file) {
-      const filePath = file.path.replace(/\\/g, '/');
-      const relativePath = path.relative(path.join(__dirname, '../'), filePath);
-
       paramCount++;
       updateFields.push(`uploadimage = $${paramCount}`);
-      params.push(relativePath);
-
-      imagePath = relativePath;
+      params.push(file.path);
+      imagePath = file.path;
     }
 
     // Always update dateofmodification
@@ -339,7 +334,7 @@ const updateTrip = asyncHandler(async (req, res) => {
     };
 
     if (imagePath) {
-      response.imageUrl = `/uploads/TripImages/${path.basename(file.path)}`;
+      response.imageUrl = file.path;
 
       // Delete old image if exists and different
       const oldImage = checkTrip.rows[0].uploadimage;

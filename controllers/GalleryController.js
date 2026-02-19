@@ -18,9 +18,7 @@ const insertGallery = asyncHandler(async (req, res) => {
     const placeholders = [];
 
     files.forEach((file, index) => {
-      const relativePath = path
-        .relative(path.join(__dirname, '..'), file.path)
-        .replace(/\\/g, '/');
+      const imageUrl = file.path;
 
       // 6 columns, last one is NOW() in SQL
       placeholders.push(
@@ -30,7 +28,7 @@ const insertGallery = asyncHandler(async (req, res) => {
       values.push(
         parseInt(trip_id),      // $1, $6, ...
         folder_name,            // $2, $7, ...
-        relativePath,           // $3, $8, ...
+        imageUrl,               // $3, $8, ...
         image_title || null,    // $4, $9, ...
         0                       // deleted = 0 ($5, $10, ...)
       );
@@ -83,9 +81,7 @@ const updateGalleryById = asyncHandler(async (req, res) => {
 
     if (files && files.length > 0) {
       // Use first uploaded file for update
-      image_url = path
-        .relative(path.join(__dirname, '..'), files[0].path)
-        .replace(/\\/g, '/');
+      image_url = files[0].path;
     }
 
     const query = `
@@ -334,9 +330,7 @@ const updateGalleryByFolder = asyncHandler(async (req, res) => {
       const activeFolderName = new_folder_name || old_folder_name;
 
       files.forEach((file, index) => {
-        const relativePath = path
-          .relative(path.join(__dirname, '..'), file.path)
-          .replace(/\\/g, '/');
+        const imageUrl = file.path;
 
         placeholders.push(
           `($${index * 5 + 1}, $${index * 5 + 2}, $${index * 5 + 3}, $${index * 5 + 4}, $${index * 5 + 5}, NOW())`
@@ -345,7 +339,7 @@ const updateGalleryByFolder = asyncHandler(async (req, res) => {
         values.push(
           parseInt(trip_id),
           activeFolderName,
-          relativePath,
+          imageUrl,
           image_title || (result.rows.length > 0 ? result.rows[0].image_title : null),
           0
         );

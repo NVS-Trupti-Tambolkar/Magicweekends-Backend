@@ -8,7 +8,20 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const { storage } = require('../config/cloudinary');
+const cloudinary = require('../config/cloudinary');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'MagicWeekends/Bookings',
+        allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
+        public_id: (req, file) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            return `booking-id-${uniqueSuffix}`;
+        }
+    },
+});
 
 // File filter (Allow images and PDFs)
 const fileFilter = (req, file, cb) => {

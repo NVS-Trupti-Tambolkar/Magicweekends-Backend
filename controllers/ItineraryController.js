@@ -2,7 +2,7 @@ const asyncHandler = require('express-async-handler');
 const { executeQuery } = require('../config/db');
 
 const insertItineraries = asyncHandler(async (req, res) => {
-  const { trip_id, itineraries } = req.body;
+  const { trip_id, itineraries, trip_type = 'normal' } = req.body;
 
   // Validation
   if (!trip_id) {
@@ -51,8 +51,9 @@ const insertItineraries = asyncHandler(async (req, res) => {
           activities,
           created_at,
           dateofmodification,
-          deleted
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8)
+          deleted,
+          trip_type
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, $9)
         RETURNING *
       `;
 
@@ -64,7 +65,8 @@ const insertItineraries = asyncHandler(async (req, res) => {
         meals || null,
         accommodation || null,
         activities || null,
-        deleted // boolean
+        deleted, // boolean
+        trip_type
       ];
 
       const result = await executeQuery(query, params);
@@ -114,13 +116,13 @@ const getItinerariesByTrip = asyncHandler(async (req, res) => {
     i.deleted,
     i.dateofmodification
   FROM ${tableName} t
-  LEFT JOIN itineraries i ON t.id = i.trip_id
+  LEFT JOIN itineraries i ON t.id = i.trip_id AND i.trip_type = $2
   WHERE t.id = $1
     AND (i.deleted = 0 OR i.deleted IS NULL)
   ORDER BY i.day_number
 `;
 
-    const result = await executeQuery(query, [parseInt(trip_id)]);
+    const result = await executeQuery(query, [parseInt(trip_id), type]);
 
     return res.status(200).json({
       success: true,
@@ -253,7 +255,7 @@ const deleteItinerary = asyncHandler(async (req, res) => {
 });
 
 const deleteItinerariesByTrip = asyncHandler(async (req, res) => {
-  const { trip_id } = req.query;
+  const { trip_id, trip_type = 'normal' } = req.query;
 
   if (!trip_id) {
     return res.status(400).json({
@@ -267,10 +269,10 @@ const deleteItinerariesByTrip = asyncHandler(async (req, res) => {
       UPDATE itineraries
       SET deleted = 1,
           dateofmodification = NOW()
-      WHERE trip_id = $1
+      WHERE trip_id = $1 AND trip_type = $2
     `;
 
-    const result = await executeQuery(query, [parseInt(trip_id)]);
+    const result = await executeQuery(query, [parseInt(trip_id), trip_type]);
 
     return res.status(200).json({
       success: true,

@@ -4,7 +4,7 @@ const router = express.Router();
 const { insertItineraries, getItinerariesByTrip, updateItinerary, deleteItinerary, deleteItinerariesByTrip } = require('../controllers/ItineraryController');
 
 
-router.post("/itineraries", insertItineraries);
+router.post("/insertItineraries", insertItineraries);
 router.get("/getItinerariesByTrip", getItinerariesByTrip);
 router.delete("/deleteItinerary", deleteItinerary);
 router.delete("/deleteByTrip", deleteItinerariesByTrip);
