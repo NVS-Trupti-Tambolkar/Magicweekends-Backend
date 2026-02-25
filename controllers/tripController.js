@@ -335,26 +335,12 @@ const updateTrip = asyncHandler(async (req, res) => {
 
     if (imagePath) {
       response.imageUrl = file.path;
-
-      // Delete old image if exists and different
-      const oldImage = checkTrip.rows[0].uploadimage;
-      if (oldImage && oldImage !== imagePath) {
-        const oldImagePath = path.join(__dirname, '../', oldImage);
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-          console.log(`Deleted old image: ${oldImage}`);
-        }
-      }
     }
 
     return res.status(200).json(response);
 
   } catch (error) {
     console.error("UpdateTrip error:", error);
-
-    if (file && file.path && fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
-    }
 
     return res.status(500).json({
       success: false,
@@ -498,6 +484,11 @@ const getFile = asyncHandler(async (req, res) => {
       .json({ success: false, message: "File path is required." });
   }
 
+  // Handle external URLs (Cloudinary, picsum, etc.)
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+    return res.redirect(filePath);
+  }
+
   const fullPath = path.join(__dirname, "..", filePath);
 
   try {
@@ -523,11 +514,8 @@ const getFile = asyncHandler(async (req, res) => {
     fileStream.pipe(res);
   } catch (error) {
     console.error(`Error streaming file ${fullPath}:`, error);
-    return res.status(404).json({
-      success: false,
-      message: "File not found or inaccessible.",
-      error: error.message,
-    });
+    // Return a placeholder image instead of error
+    return res.redirect('https://picsum.photos/seed/placeholder/600/400');
   }
 });
 
