@@ -1,12 +1,25 @@
 const asyncHandler = require('express-async-handler');
-const { executeStoredProcedureWithParams } = require('../config/db');
 const { executeQuery } = require("../config/db");
-const path = require('path');
-const fs = require('fs');
-const fsPromises = require("fs/promises");
+const cloudinary = require('../config/cloudinary');
 
+/* =========================================================
+   Helper → extract Cloudinary public_id
+   ========================================================= */
+const getPublicId = (url) => {
+  try {
+    if (!url) return null;
+    const parts = url.split('/');
+    const fileName = parts.pop().split('.')[0];
+    const folder = parts.slice(parts.indexOf('upload') + 1).join('/');
+    return `${folder}/${fileName}`;
+  } catch {
+    return null;
+  }
+};
 
-
+/* =========================================================
+   INSERT TRIP
+   ========================================================= */
 const insertTripDirect = asyncHandler(async (req, res) => {
   const {
     title,
@@ -24,50 +37,27 @@ const insertTripDirect = asyncHandler(async (req, res) => {
     status
   } = req.body;
 
-  let file = req.file;
-  if (!file && req.files) {
-    file = (req.files.uploadimage && req.files.uploadimage[0]) ||
-      (req.files.image && req.files.image[0]);
-  }
+  const file = req.file || (req.files?.uploadimage?.[0] || req.files?.image?.[0]);
 
   if (!title || !duration || !tours || !price || !difficulty || !highlights || !file) {
     return res.status(400).json({
       success: false,
-      message: "Title, duration, tours, price, difficulty, highlights, and image file are required"
+      message: "All required fields including image are mandatory"
     });
   }
 
-  try {
-    const imageUrl = file.path;
+  const imageUrl = file.secure_url;   // ✔ Always Cloudinary URL
 
-    const query = `
-      INSERT INTO trips (
-        title,
-        duration,
-        uploadimage,
-        tours,
-        price,
-        difficulty,
-        highlights,
-        from_location,
-        to_location,
-        overview,
-        things_to_carry,
-        max_group_size,
-        age_limit,
-        status,
-        created_at,
-        dateofmodification,
-        deleted
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $13,
-        COALESCE($14, TRUE), NOW(), NOW(), B'0'
-      )
-      RETURNING *
-    `;
-
-    const params = [
+  const result = await executeQuery(
+    `INSERT INTO trips (
+        title,duration,uploadimage,tours,price,difficulty,highlights,
+        from_location,to_location,overview,things_to_carry,
+        max_group_size,age_limit,status,created_at,dateofmodification,deleted
+     ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,
+        $8,$9,$10,$11,$12,$13,$14,NOW(),NOW(),B'0'
+     ) RETURNING *`,
+    [
       title,
       duration,
       imageUrl,
@@ -81,451 +71,183 @@ const insertTripDirect = asyncHandler(async (req, res) => {
       things_to_carry || null,
       max_group_size ? parseInt(max_group_size) : null,
       age_limit || null,
-      status !== undefined ? status : true
-    ];
+      (status === "true" || status === true)
+    ]
+  );
 
-    const result = await executeQuery(query, params);
-
-    return res.status(201).json({
-      success: true,
-      message: "Trip inserted successfully",
-      data: result.rows[0]  // imageUrl removed
-    });
-  } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Database error",
-      error: error.message
-    });
-  }
+  res.status(201).json({
+    success: true,
+    message: "Trip inserted successfully",
+    data: result.rows[0]
+  });
 });
 
+/* =========================================================
+   GET ALL TRIPS
+   ========================================================= */
 const getTrips = asyncHandler(async (req, res) => {
-  try {
-    const { executeQuery } = require('../config/db');
+  const { search, difficulty, minPrice, maxPrice } = req.query;
 
-    const { search, difficulty, minPrice, maxPrice } = req.query;
+  let query = "SELECT * FROM trips WHERE deleted = B'0'";
+  const params = [];
+  let count = 0;
 
-    let query = "SELECT * FROM trips WHERE deleted = B'0'";
-    const params = [];
-    let paramCount = 0;
-
-    if (search) {
-      paramCount++;
-      query += ` AND (title ILIKE $${paramCount} OR highlights ILIKE $${paramCount})`;
-      params.push(`%${search}%`);
-    }
-
-    if (difficulty) {
-      paramCount++;
-      query += ` AND difficulty = $${paramCount}`;
-      params.push(difficulty);
-    }
-
-    if (minPrice) {
-      paramCount++;
-      query += ` AND REPLACE(price, '₹', '')::NUMERIC >= $${paramCount}`;
-      params.push(minPrice);
-    }
-
-    if (maxPrice) {
-      paramCount++;
-      query += ` AND REPLACE(price, '₹', '')::NUMERIC <= $${paramCount}`;
-      params.push(maxPrice);
-    }
-
-    query += " ORDER BY created_at DESC";
-
-    const result = await executeQuery(query, params);
-
-    // 🔹 Normalize uploadimage path
-    const formattedData = result.rows.map(trip => ({
-      ...trip,
-      uploadimage: trip.uploadimage
-        ? trip.uploadimage.replace(/\\/g, "/")
-        : null
-    }));
-
-    res.status(200).json({
-      success: true,
-      count: formattedData.length,
-      data: formattedData
-    });
-  } catch (error) {
-    console.error("GetTrips error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch trips.",
-      error: error.message
-    });
+  if (search) {
+    count++;
+    query += ` AND (title ILIKE $${count} OR highlights ILIKE $${count})`;
+    params.push(`%${search}%`);
   }
+
+  if (difficulty) {
+    count++;
+    query += ` AND difficulty = $${count}`;
+    params.push(difficulty);
+  }
+
+  if (minPrice) {
+    count++;
+    query += ` AND REPLACE(price,'₹','')::NUMERIC >= $${count}`;
+    params.push(minPrice);
+  }
+
+  if (maxPrice) {
+    count++;
+    query += ` AND REPLACE(price,'₹','')::NUMERIC <= $${count}`;
+    params.push(maxPrice);
+  }
+
+  query += " ORDER BY created_at DESC";
+
+  const result = await executeQuery(query, params);
+
+  res.json({
+    success: true,
+    count: result.rows.length,
+    data: result.rows
+  });
 });
 
-const updateTrip = asyncHandler(async (req, res) => {
-  const {
-    id,
-    title,
-    duration,
-    tours,
-    price,
-    difficulty,
-    highlights,
-    from_location,
-    to_location,
-    overview,
-    things_to_carry,
-    max_group_size,
-    age_limit,
-    status
-  } = req.body;
-
-  let file = req.file;
-  if (!file && req.files) {
-    file = (req.files.uploadimage && req.files.uploadimage[0]) ||
-      (req.files.image && req.files.image[0]);
-  }
-
-  if (!id) {
-    return res.status(400).json({
-      success: false,
-      message: "Trip ID is required in form-data"
-    });
-  }
-
-  if (
-    !title && !duration && !tours && !price && !difficulty && !highlights &&
-    !from_location && !to_location && !overview && !things_to_carry &&
-    !max_group_size && !age_limit && status === undefined && !file
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "At least one field is required for update"
-    });
-  }
-
-  try {
-    const { executeQuery } = require('../config/db');
-
-    // Check if trip exists and not deleted
-    const checkTrip = await executeQuery(
-      "SELECT * FROM trips WHERE id = $1 AND deleted = B'0'",
-      [id]
-    );
-
-    if (checkTrip.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Trip not found or has been deleted"
-      });
-    }
-
-    const updateFields = [];
-    const params = [];
-    let paramCount = 0;
-
-    if (title && title.trim() !== '') {
-      paramCount++;
-      updateFields.push(`title = $${paramCount}`);
-      params.push(title);
-    }
-    if (duration && duration.trim() !== '') {
-      paramCount++;
-      updateFields.push(`duration = $${paramCount}`);
-      params.push(duration);
-    }
-    if (tours !== undefined && tours !== '' && !isNaN(tours)) {
-      paramCount++;
-      updateFields.push(`tours = $${paramCount}`);
-      params.push(parseInt(tours));
-    }
-    if (price && price.trim() !== '') {
-      paramCount++;
-      updateFields.push(`price = $${paramCount}`);
-      params.push(price);
-    }
-    if (difficulty && difficulty.trim() !== '') {
-      paramCount++;
-      updateFields.push(`difficulty = $${paramCount}`);
-      params.push(difficulty);
-    }
-    if (highlights && highlights.trim() !== '') {
-      paramCount++;
-      updateFields.push(`highlights = $${paramCount}`);
-      params.push(highlights);
-    }
-    if (from_location && from_location.trim() !== '') {
-      paramCount++;
-      updateFields.push(`from_location = $${paramCount}`);
-      params.push(from_location);
-    }
-    if (to_location && to_location.trim() !== '') {
-      paramCount++;
-      updateFields.push(`to_location = $${paramCount}`);
-      params.push(to_location);
-    }
-    if (overview && overview.trim() !== '') {
-      paramCount++;
-      updateFields.push(`overview = $${paramCount}`);
-      params.push(overview);
-    }
-    if (things_to_carry && things_to_carry.trim() !== '') {
-      paramCount++;
-      updateFields.push(`things_to_carry = $${paramCount}`);
-      params.push(things_to_carry);
-    }
-    if (max_group_size !== undefined && max_group_size !== '' && !isNaN(max_group_size)) {
-      paramCount++;
-      updateFields.push(`max_group_size = $${paramCount}`);
-      params.push(parseInt(max_group_size));
-    }
-    if (age_limit && age_limit.trim() !== '') {
-      paramCount++;
-      updateFields.push(`age_limit = $${paramCount}`);
-      params.push(age_limit);
-    }
-    if (status !== undefined) {
-      paramCount++;
-      updateFields.push(`status = $${paramCount}`);
-      params.push(status === 'true' || status === true);
-    }
-
-    let imagePath = null;
-    if (file) {
-      paramCount++;
-      updateFields.push(`uploadimage = $${paramCount}`);
-      params.push(file.path);
-      imagePath = file.path;
-    }
-
-    // Always update dateofmodification
-    updateFields.push(`dateofmodification = NOW()`);
-
-    paramCount++;
-    params.push(id);
-
-    if (updateFields.length <= 1) { // Only dateofmodification
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields provided for update"
-      });
-    }
-
-    const query = `
-      UPDATE trips
-      SET ${updateFields.join(', ')}
-      WHERE id = $${paramCount} AND deleted = B'0'
-      RETURNING *
-    `;
-
-    const result = await executeQuery(query, params);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Failed to update trip - no rows affected"
-      });
-    }
-
-    const response = {
-      success: true,
-      message: "Trip updated successfully",
-      data: result.rows[0]
-    };
-
-    if (imagePath) {
-      response.imageUrl = file.path;
-    }
-
-    return res.status(200).json(response);
-
-  } catch (error) {
-    console.error("UpdateTrip error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update trip",
-      error: error.message
-    });
-  }
-});
-
+/* =========================================================
+   GET TRIP BY ID
+   ========================================================= */
 const getTripById = asyncHandler(async (req, res) => {
-  try {
-    const { executeQuery } = require("../config/db");
-    const { id } = req.query;
+  const { id } = req.query;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Trip ID is required",
-      });
-    }
+  const result = await executeQuery(
+    "SELECT * FROM trips WHERE id=$1 AND deleted=B'0'",
+    [id]
+  );
 
-    const query = `
-      SELECT *
-      FROM trips
-      WHERE id = $1
-        AND deleted = B'0'
-    `;
+  if (!result.rows.length)
+    return res.status(404).json({ success:false, message:"Trip not found" });
 
-    const result = await executeQuery(query, [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Trip not found",
-      });
-    }
-
-    const trip = {
-      ...result.rows[0],
-      uploadimage: result.rows[0].uploadimage
-        ? result.rows[0].uploadimage.replace(/\\/g, "/")
-        : null,
-    };
-
-    res.status(200).json({
-      success: true,
-      message: "Trip fetched successfully",
-      data: trip,
-    });
-  } catch (error) {
-    console.error("GetTripById error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch trip.",
-      error: error.message,
-    });
-  }
+  res.json({ success:true, data: result.rows[0] });
 });
 
+/* =========================================================
+   UPDATE TRIP
+   ========================================================= */
+const updateTrip = asyncHandler(async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ success:false, message:"Trip ID required" });
+
+  const existing = await executeQuery(
+    "SELECT * FROM trips WHERE id=$1 AND deleted=B'0'",
+    [id]
+  );
+
+  if (!existing.rows.length)
+    return res.status(404).json({ success:false, message:"Trip not found" });
+
+  const oldTrip = existing.rows[0];
+
+  let imageUrl = oldTrip.uploadimage;
+
+  const file = req.file || (req.files?.uploadimage?.[0] || req.files?.image?.[0]);
+
+  // Replace image if new uploaded
+  if (file) {
+    const publicId = getPublicId(oldTrip.uploadimage);
+    if (publicId) {
+      try { await cloudinary.uploader.destroy(publicId); }
+      catch(e){ console.log("Cloudinary delete failed:", e.message); }
+    }
+
+    imageUrl = file.secure_url;
+  }
+
+  const result = await executeQuery(
+    `UPDATE trips SET
+      title=COALESCE($1,title),
+      duration=COALESCE($2,duration),
+      tours=COALESCE($3,tours),
+      price=COALESCE($4,price),
+      difficulty=COALESCE($5,difficulty),
+      highlights=COALESCE($6,highlights),
+      from_location=COALESCE($7,from_location),
+      to_location=COALESCE($8,to_location),
+      overview=COALESCE($9,overview),
+      things_to_carry=COALESCE($10,things_to_carry),
+      max_group_size=COALESCE($11,max_group_size),
+      age_limit=COALESCE($12,age_limit),
+      status=COALESCE($13,status),
+      uploadimage=$14,
+      dateofmodification=NOW()
+     WHERE id=$15 RETURNING *`,
+    [
+      req.body.title,
+      req.body.duration,
+      req.body.tours,
+      req.body.price,
+      req.body.difficulty,
+      req.body.highlights,
+      req.body.from_location,
+      req.body.to_location,
+      req.body.overview,
+      req.body.things_to_carry,
+      req.body.max_group_size,
+      req.body.age_limit,
+      req.body.status,
+      imageUrl,
+      id
+    ]
+  );
+
+  res.json({ success:true, message:"Trip updated successfully", data:result.rows[0] });
+});
+
+/* =========================================================
+   DELETE TRIP
+   ========================================================= */
 const deleteTrip = asyncHandler(async (req, res) => {
-  try {
-    const { executeQuery } = require('../config/db');
-    const { id } = req.body;
+  const { id } = req.body;
 
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Trip ID is required",
-      });
+  const existing = await executeQuery(
+    "SELECT uploadimage FROM trips WHERE id=$1",
+    [id]
+  );
+
+  if (existing.rows.length) {
+    const publicId = getPublicId(existing.rows[0].uploadimage);
+    if (publicId) {
+      try { await cloudinary.uploader.destroy(publicId); }
+      catch(e){ console.log("Cloudinary delete failed:", e.message); }
     }
-
-    // 1️⃣ Check if trip exists & not deleted
-    const checkQuery = `
-      SELECT id, title
-      FROM trips
-      WHERE id = $1
-        AND deleted = B'0'
-    `;
-
-    const checkResult = await executeQuery(checkQuery, [id]);
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Trip not found or already deleted",
-      });
-    }
-
-    // 2️⃣ Soft delete trip (set deleted = 1)
-    const deleteQuery = `
-      UPDATE trips
-      SET deleted = B'1',
-          dateofmodification = NOW()
-      WHERE id = $1
-      RETURNING id, title, deleted, dateofmodification
-    `;
-
-    const deleteResult = await executeQuery(deleteQuery, [id]);
-
-    // 3️⃣ Cascading Soft delete for itineraries
-    const deleteItinQuery = `
-      UPDATE itineraries
-      SET deleted = 1,
-          dateofmodification = NOW()
-      WHERE trip_id = $1
-    `;
-    await executeQuery(deleteItinQuery, [id]);
-
-    // 4️⃣ Cascading Soft delete for galleries
-    const deleteGalleryQuery = `
-      UPDATE galleries
-      SET deleted = 1
-      WHERE trip_id = $1
-    `;
-    await executeQuery(deleteGalleryQuery, [id]);
-
-    return res.status(200).json({
-      success: true,
-      message: "Trip and associated data deleted successfully",
-      data: deleteResult.rows[0],
-    });
-  } catch (error) {
-    console.error("DeleteTrip error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete trip",
-      error: error.message,
-    });
-  }
-});
-
-const getFile = asyncHandler(async (req, res) => {
-  const { filePath } = req.query; // e.g., "uploads/32/TCDocuments/32 - 2025-03-24 - handover.jpeg"
-
-  console.log("Filepath :", filePath);
-
-
-  if (!filePath) {
-    return res
-      .status(400)
-      .json({ success: false, message: "File path is required." });
   }
 
-  // Handle external URLs (Cloudinary, picsum, etc.)
-  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-    return res.redirect(filePath);
-  }
+  const result = await executeQuery(
+    `UPDATE trips SET deleted=B'1',dateofmodification=NOW()
+     WHERE id=$1 RETURNING *`,
+    [id]
+  );
 
-  const fullPath = path.join(__dirname, "..", filePath);
-
-  try {
-    // Check if file exists and is readable
-    await fsPromises.access(fullPath, fs.constants.R_OK);
-
-    // Stream the file
-    const fileStream = fs.createReadStream(fullPath); // Use base fs module
-    const fileName = path.basename(fullPath);
-
-    // Set headers
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    // Set appropriate MIME type based on file extension
-    const mimeType =
-      {
-        ".jpeg": "image/jpeg",
-        ".jpg": "image/jpeg",
-        ".png": "image/png",
-        ".pdf": "application/pdf",
-      }[path.extname(fileName).toLowerCase()] || "application/octet-stream";
-    res.setHeader("Content-Type", mimeType);
-
-    fileStream.pipe(res);
-  } catch (error) {
-    console.error(`Error streaming file ${fullPath}:`, error);
-    // Return a placeholder image instead of error
-    return res.redirect('https://picsum.photos/seed/placeholder/600/400');
-  }
+  res.json({ success:true, message:"Trip deleted successfully", data:result.rows[0] });
 });
 
 module.exports = {
-  //   insertTrip,
-  getTrips,
   insertTripDirect,
-  updateTrip,
+  getTrips,
   getTripById,
-  deleteTrip,
-
-  getFile
+  updateTrip,
+  deleteTrip
 };

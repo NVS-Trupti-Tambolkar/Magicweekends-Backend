@@ -1,16 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { insertGallery, updateGalleryById, getGalleryById, deleteGalleryById, getGalleries, deleteGalleryByFolder, updateGalleryByFolder, getGalleriesByTripId } = require('../controllers/GalleryController');
 const galleryUpload = require('../middleware/galleryUpload');
+const { insertGallery, updateGalleryById, deleteGalleryById, getGalleries, getGalleriesByTripId, deleteGalleryByFolder } = require('../controllers/GalleryController');
 
-router.post('/insertGallery', galleryUpload, insertGallery);
-router.put('/updateGalleryById', galleryUpload, updateGalleryById);
-router.put('/updateGalleryByFolder', galleryUpload, updateGalleryByFolder);
-router.get('/getGalleries', getGalleries);
-router.get('/getGalleryById', getGalleryById);
-router.get('/getGalleriesByTripId', getGalleriesByTripId);
+
+router.post('/insertGallery', galleryUpload.array('images',10), insertGallery);
+router.put('/updateGalleryById', galleryUpload.array('images',10), updateGalleryById);
 router.delete('/deleteGalleryById', deleteGalleryById);
+router.get('/getGalleries', getGalleries);
+router.get('/getGalleriesByTripId', getGalleriesByTripId);
 router.delete('/deleteGalleryByFolder', deleteGalleryByFolder);
-
 
 module.exports = router;

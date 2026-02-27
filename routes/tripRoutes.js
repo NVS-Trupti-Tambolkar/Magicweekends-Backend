@@ -11,7 +11,8 @@ router.get('/getTrips', getTrips)
 router.get('/getTripById', getTripById)
 router.delete('/deleteTrip', tripImageUploadMiddleware, deleteTrip);
 
-router.get('/getFilepath', getFile)
+// DISABLED - Local file serving no longer needed with Cloudinary
+// router.get('/getFilepath', getFile)
 
 // router.get('/getTrips', getTrips);
 

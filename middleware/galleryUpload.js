@@ -41,4 +41,4 @@ const upload = multer({
 });
 
 // Export: multiple images
-module.exports = upload.array('images', 10);
+module.exports = upload;

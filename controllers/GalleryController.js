@@ -1,417 +1,229 @@
-const path = require('path');
 const asyncHandler = require('express-async-handler');
 const { executeQuery } = require('../config/db');
+const cloudinary = require('../config/cloudinary');
 
+/* Helper: get cloudinary public id */
+const getPublicId = (url) => {
+  try {
+    if (!url) return null;
+    const parts = url.split('/upload/');
+    const afterUpload = parts[1];
+    const withoutVersion = afterUpload.split('/').slice(1).join('/');
+    return withoutVersion.split('.')[0];
+  } catch {
+    return null;
+  }
+};
+
+/* =========================================================
+   INSERT GALLERY (MULTIPLE IMAGES)
+========================================================= */
 const insertGallery = asyncHandler(async (req, res) => {
+
   const { trip_id, folder_name, image_title } = req.body;
   const files = req.files;
 
-  if (!trip_id || !folder_name || !files || files.length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: 'trip_id, folder_name, and images are required'
-    });
-  }
+  if (!trip_id || !folder_name || !files || files.length === 0)
+    return res.status(400).json({ success:false, message:"Images required" });
 
-  try {
-    const values = [];
-    const placeholders = [];
+  const values = [];
+  const placeholders = [];
 
-    files.forEach((file, index) => {
-      const imageUrl = file.path;
+  files.forEach((file, index) => {
 
-      // 6 columns, last one is NOW() in SQL
-      placeholders.push(
-        `($${index * 5 + 1}, $${index * 5 + 2}, $${index * 5 + 3}, $${index * 5 + 4}, $${index * 5 + 5}, NOW())`
-      );
+    const base = index * 5;
 
-      values.push(
-        parseInt(trip_id),      // $1, $6, ...
-        folder_name,            // $2, $7, ...
-        imageUrl,               // $3, $8, ...
-        image_title || null,    // $4, $9, ...
-        0                       // deleted = 0 ($5, $10, ...)
-      );
-    });
+    placeholders.push(
+      `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},NOW())`
+    );
 
-    const query = `
-      INSERT INTO galleries (
-        trip_id,
-        folder_name,
-        image_url,
-        image_title,
-        deleted,
-        created_at
-      )
-      VALUES ${placeholders.join(',')}
-      RETURNING *
-    `;
-
-    const result = await executeQuery(query, values);
-
-    return res.status(201).json({
-      success: true,
-      message: 'Gallery images uploaded successfully',
-      data: result.rows
-    });
-
-  } catch (error) {
-    console.error('InsertGallery error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const updateGalleryById = asyncHandler(async (req, res) => {
-  const { gallery_id, folder_name, existing_folder, image_title } = req.body;
-  const files = req.files;
-
-  if (!gallery_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'gallery_id is required in body'
-    });
-  }
-
-  try {
-    let image_url = null;
-
-    if (files && files.length > 0) {
-      // Use first uploaded file for update
-      image_url = files[0].path;
-    }
-
-    const query = `
-      UPDATE galleries
-      SET
-          folder_name = COALESCE($1, folder_name),
-          image_title = COALESCE($2, image_title),
-          image_url = COALESCE($3, image_url)
-      WHERE id = $4
-      RETURNING *
-    `;
-
-    const params = [
-      folder_name || existing_folder || null,  // $1
-      image_title || null,                      // $2
-      image_url || null,                        // $3
-      parseInt(gallery_id)                      // $4
-    ];
-
-    const result = await executeQuery(query, params);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Gallery not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Gallery updated successfully',
-      data: result.rows[0]
-    });
-
-  } catch (error) {
-    console.error('UpdateGalleryById error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const getGalleryById = asyncHandler(async (req, res) => {
-  const { gallery_id } = req.query; // you can also use req.body if you want
-
-  if (!gallery_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'gallery_id is required'
-    });
-  }
-
-  try {
-    const query = `
-      SELECT *
-      FROM galleries
-      WHERE id = $1
-        AND (deleted IS NULL OR deleted = 0)
-    `;
-
-    const params = [parseInt(gallery_id)];
-    const result = await executeQuery(query, params);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Gallery not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: result.rows[0]
-    });
-
-  } catch (error) {
-    console.error('GetGalleryById error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const deleteGalleryById = asyncHandler(async (req, res) => {
-  const { gallery_id } = req.query; // or req.body
-
-  if (!gallery_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'gallery_id is required'
-    });
-  }
-
-  try {
-    const query = `
-      UPDATE galleries
-      SET deleted = 1
-      WHERE id = $1
-      RETURNING *
-    `;
-
-    const params = [parseInt(gallery_id)];
-    const result = await executeQuery(query, params);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Gallery not found'
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Gallery deleted successfully',
-      data: result.rows[0]
-    });
-
-  } catch (error) {
-    console.error('DeleteGalleryById error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const getGalleries = asyncHandler(async (req, res) => {
-  try {
-    const query = `
-      SELECT id, trip_id, folder_name, image_url, image_title, created_at
-      FROM galleries
-      WHERE (deleted IS NULL OR deleted = 0)
-      ORDER BY created_at DESC
-    `;
-
-    const result = await executeQuery(query);
-
-    // Group by folder_name
-    const groupedGalleries = result.rows.reduce((acc, current) => {
-      const folder = current.folder_name || 'Uncategorized';
-      if (!acc[folder]) {
-        acc[folder] = {
-          id: current.folder_name,
-          tourName: current.folder_name,
-          title: current.image_title || current.folder_name,
-          trip_id: current.trip_id,
-          images: [],
-          ids: []
-        };
-      }
-      acc[folder].images.push(current.image_url);
-      acc[folder].ids.push(current.id);
-      return acc;
-    }, {});
-
-    return res.status(200).json({
-      success: true,
-      data: Object.values(groupedGalleries)
-    });
-
-  } catch (error) {
-    console.error('GetGalleries error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const deleteGalleryByFolder = asyncHandler(async (req, res) => {
-  const { folder_name, trip_id } = req.query;
-
-  if (!folder_name || !trip_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'folder_name and trip_id are required'
-    });
-  }
-
-  try {
-    const query = `
-      UPDATE galleries
-      SET deleted = 1
-      WHERE folder_name = $1 AND trip_id = $2
-      RETURNING *
-    `;
-
-    const result = await executeQuery(query, [folder_name, parseInt(trip_id)]);
-
-    return res.status(200).json({
-      success: true,
-      message: `Deleted ${result.rows.length} images from gallery ${folder_name}`,
-      data: result.rows
-    });
-  } catch (error) {
-    console.error('DeleteGalleryByFolder error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
-});
-
-const updateGalleryByFolder = asyncHandler(async (req, res) => {
-  const { old_folder_name, trip_id, new_folder_name, image_title } = req.body;
-  const files = req.files;
-
-  if (!old_folder_name || !trip_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'old_folder_name and trip_id are required'
-    });
-  }
-
-  try {
-    // 1. Update existing entries
-    const updateQuery = `
-            UPDATE galleries
-            SET
-                folder_name = COALESCE($1, folder_name),
-                image_title = COALESCE($2, image_title)
-            WHERE folder_name = $3 AND trip_id = $4
-            RETURNING *
-        `;
-
-    const updateParams = [
-      new_folder_name || null,
+    values.push(
+      parseInt(trip_id),
+      folder_name,
+      file.path,              // <-- Cloudinary URL
       image_title || null,
-      old_folder_name,
-      parseInt(trip_id)
-    ];
+      0
+    );
+  });
 
-    let result = await executeQuery(updateQuery, updateParams);
+  const result = await executeQuery(
+    `INSERT INTO galleries
+     (trip_id,folder_name,image_url,image_title,deleted,created_at)
+     VALUES ${placeholders.join(',')}
+     RETURNING *`,
+    values
+  );
 
-    // 2. If new images are uploaded, insert them
-    if (files && files.length > 0) {
-      const values = [];
-      const placeholders = [];
-      const activeFolderName = new_folder_name || old_folder_name;
-
-      files.forEach((file, index) => {
-        const imageUrl = file.path;
-
-        placeholders.push(
-          `($${index * 5 + 1}, $${index * 5 + 2}, $${index * 5 + 3}, $${index * 5 + 4}, $${index * 5 + 5}, NOW())`
-        );
-
-        values.push(
-          parseInt(trip_id),
-          activeFolderName,
-          imageUrl,
-          image_title || (result.rows.length > 0 ? result.rows[0].image_title : null),
-          0
-        );
-      });
-
-      const insertQuery = `
-                INSERT INTO galleries (trip_id, folder_name, image_url, image_title, deleted, created_at)
-                VALUES ${placeholders.join(',')}
-                RETURNING *
-            `;
-
-      const insertResult = await executeQuery(insertQuery, values);
-      // Combine results if needed or just return success
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Gallery updated successfully'
-    });
-
-  } catch (error) {
-    console.error('UpdateGalleryByFolder error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
+  res.status(201).json({ success:true, data:result.rows });
 });
 
-const getGalleriesByTripId = asyncHandler(async (req, res) => {
+/* =========================================================
+   UPDATE SINGLE IMAGE
+========================================================= */
+const updateGalleryById = asyncHandler(async (req,res)=>{
+
+  const { gallery_id, folder_name, image_title } = req.body;
+  const files = req.files;
+
+  if(!gallery_id)
+    return res.status(400).json({success:false,message:"gallery_id required"});
+
+  const existing = await executeQuery(
+    `SELECT image_url FROM galleries WHERE id=$1 AND deleted=0`,
+    [gallery_id]
+  );
+
+  if(!existing.rows.length)
+    return res.status(404).json({success:false,message:"Not found"});
+
+  let imageUrl = existing.rows[0].image_url;
+
+  /* delete old cloudinary image */
+  if(files && files.length){
+    const publicId = getPublicId(imageUrl);
+    if(publicId){
+      try{ await cloudinary.uploader.destroy(publicId); }
+      catch(e){ console.log("cloud delete fail:",e.message); }
+    }
+    imageUrl = files[0].path;
+  }
+
+  const result = await executeQuery(
+    `UPDATE galleries
+     SET folder_name=COALESCE($1,folder_name),
+         image_title=COALESCE($2,image_title),
+         image_url=$3
+     WHERE id=$4
+     RETURNING *`,
+    [folder_name,image_title,imageUrl,gallery_id]
+  );
+
+  res.json({success:true,data:result.rows[0]});
+});
+
+/* =========================================================
+   DELETE SINGLE IMAGE
+========================================================= */
+const deleteGalleryById = asyncHandler(async (req,res)=>{
+
+  const { gallery_id } = req.query;
+
+  const existing = await executeQuery(
+    `SELECT image_url FROM galleries WHERE id=$1 AND deleted=0`,
+    [gallery_id]
+  );
+
+  if(!existing.rows.length)
+    return res.status(404).json({success:false,message:"Not found"});
+
+  const publicId = getPublicId(existing.rows[0].image_url);
+
+  if(publicId){
+    try{ await cloudinary.uploader.destroy(publicId); }
+    catch(e){ console.log(e.message); }
+  }
+
+  await executeQuery(
+    `UPDATE galleries SET deleted=1 WHERE id=$1`,
+    [gallery_id]
+  );
+
+  res.json({success:true,message:"Image deleted"});
+});
+
+/* =========================================================
+   GET ALL GALLERIES
+========================================================= */
+const getGalleries = asyncHandler(async (req,res)=>{
+
+  const result = await executeQuery(
+    `SELECT id,trip_id,folder_name,image_url,image_title
+     FROM galleries
+     WHERE deleted=0
+     ORDER BY created_at DESC`
+  );
+
+  // GROUP INTO FOLDERS (CRITICAL)
+  const grouped = result.rows.reduce((acc,row)=>{
+
+    const folder = row.folder_name || "Uncategorized";
+
+    if(!acc[folder]){
+      acc[folder] = {
+        id: folder,
+        tourName: folder,
+        title: row.image_title || folder,
+        trip_id: row.trip_id,
+        images: [],
+        ids: []
+      };
+    }
+
+    acc[folder].images.push(row.image_url);
+    acc[folder].ids.push(row.id);
+
+    return acc;
+
+  },{});
+
+  res.json({
+    success:true,
+    data:Object.values(grouped)
+  });
+});
+
+/* =========================================================
+   GET GALLERY BY TRIP
+========================================================= */
+const getGalleriesByTripId = asyncHandler(async (req,res)=>{
+
   const { trip_id } = req.query;
 
-  if (!trip_id) {
-    return res.status(400).json({
-      success: false,
-      message: 'trip_id is required'
-    });
+  const result = await executeQuery(
+    `SELECT id,folder_name,image_url,image_title,created_at
+     FROM galleries
+     WHERE trip_id=$1 AND deleted=0
+     ORDER BY created_at DESC`,
+    [trip_id]
+  );
+
+  res.json({success:true,data:result.rows});
+});
+
+/* =========================================================
+   DELETE WHOLE FOLDER
+========================================================= */
+const deleteGalleryByFolder = asyncHandler(async (req,res)=>{
+
+  const { folder_name, trip_id } = req.query;
+
+  const images = await executeQuery(
+    `SELECT image_url FROM galleries
+     WHERE folder_name=$1 AND trip_id=$2 AND deleted=0`,
+    [folder_name,trip_id]
+  );
+
+  for(const img of images.rows){
+    const publicId = getPublicId(img.image_url);
+    if(publicId){
+      try{ await cloudinary.uploader.destroy(publicId); }
+      catch(e){ console.log(e.message); }
+    }
   }
 
-  try {
-    const query = `
-      SELECT id, trip_id, folder_name, image_url, image_title, created_at
-      FROM galleries
-      WHERE trip_id = $1 AND (deleted IS NULL OR deleted = 0)
-      ORDER BY created_at DESC
-    `;
+  await executeQuery(
+    `UPDATE galleries SET deleted=1 WHERE folder_name=$1 AND trip_id=$2`,
+    [folder_name,trip_id]
+  );
 
-    const result = await executeQuery(query, [parseInt(trip_id)]);
-
-    return res.status(200).json({
-      success: true,
-      data: result.rows
-    });
-
-  } catch (error) {
-    console.error('GetGalleriesByTripId error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Database error',
-      error: error.message
-    });
-  }
+  res.json({success:true,message:"Folder deleted"});
 });
 
 module.exports = {
   insertGallery,
   updateGalleryById,
-  getGalleryById,
   deleteGalleryById,
   getGalleries,
-  deleteGalleryByFolder,
-  updateGalleryByFolder,
-  getGalleriesByTripId
+  getGalleriesByTripId,
+  deleteGalleryByFolder
 };
