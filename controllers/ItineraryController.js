@@ -28,13 +28,15 @@ const insertItineraries = asyncHandler(async (req, res) => {
     if (!tripCheck.rows.length)
       throw new Error("Trip does not exist");
 
-    // remove old itineraries
-    await client.query(
-      `UPDATE itineraries
-       SET deleted=B'1', dateofmodification=NOW()
-       WHERE trip_id=$1 AND trip_type=$2`,
-      [trip_id, trip_type]
-    );
+    // remove old itineraries if not in append mode
+    if (!req.body.append) {
+      await client.query(
+        `UPDATE itineraries
+         SET deleted=1, dateofmodification=NOW()
+         WHERE trip_id=$1 AND trip_type=$2`,
+        [trip_id, trip_type]
+      );
+    }
 
     // bulk insert
     const values = [];
@@ -46,7 +48,7 @@ const insertItineraries = asyncHandler(async (req, res) => {
       placeholders.push(`(
         $${base+1}, $${base+2}, $${base+3}, $${base+4},
         $${base+5}, $${base+6}, $${base+7},
-        NOW(), NOW(), B'0', $${base+8}
+        NOW(), NOW(), 0, $${base+8}
       )`);
 
       values.push(
@@ -104,7 +106,7 @@ const getItinerariesByTrip = asyncHandler(async (req, res) => {
      FROM itineraries
      WHERE trip_id=$1
        AND trip_type=$2
-       AND deleted=B'0'
+       AND deleted=0
      ORDER BY day_number`,
     [trip_id, type]
   );
@@ -130,7 +132,7 @@ const updateItinerary = asyncHandler(async (req, res) => {
         accommodation=COALESCE($5,accommodation),
         activities=COALESCE($6,activities),
         dateofmodification=NOW()
-     WHERE id=$7 AND deleted=B'0'
+     WHERE id=$7 AND deleted=0
      RETURNING *`,
     [
       fields.day_number,
@@ -157,7 +159,7 @@ const deleteItinerary = asyncHandler(async (req, res) => {
 
   await pool.query(
     `UPDATE itineraries
-     SET deleted=B'1', dateofmodification=NOW()
+     SET deleted=1, dateofmodification=NOW()
      WHERE id=$1`,
     [itinerary_id]
   );
@@ -173,7 +175,7 @@ const deleteItinerariesByTrip = asyncHandler(async (req, res) => {
 
   await pool.query(
     `UPDATE itineraries
-     SET deleted=B'1', dateofmodification=NOW()
+     SET deleted=1, dateofmodification=NOW()
      WHERE trip_id=$1 AND trip_type=$2`,
     [trip_id, trip_type]
   );
