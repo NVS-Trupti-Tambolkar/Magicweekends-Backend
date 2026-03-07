@@ -28,7 +28,7 @@ const createBooking = async (req,res)=>{
    (trip_id,trip_type,full_name,email,phone,travel_date,
     number_of_people,price_per_person,total_amount,payment_method,
     travelers_data,special_request,booking_status,payment_status)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending','unpaid')
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending','pending')
    RETURNING *`,
    [
     trip_id, trip_type, full_name, email, phone, travel_date,
