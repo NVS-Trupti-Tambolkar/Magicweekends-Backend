@@ -68,13 +68,17 @@ const createBooking = async (req,res)=>{
    }
   });
 
- }catch(e){
-  await client.query('ROLLBACK');
-  logger.error(e);
-  res.status(500).json({success:false,message:"Booking failed"});
- }finally{
-  client.release();
- }
+  } catch (e) {
+    await client.query('ROLLBACK');
+    logger.error('Error in createBooking:', e);
+    res.status(500).json({ 
+      success: false, 
+      message: "Booking failed", 
+      error: process.env.NODE_ENV === 'development' ? e.message : "Internal Server Error"
+    });
+  } finally {
+    client.release();
+  }
 };
 
 
@@ -110,10 +114,10 @@ const verifyPayment = async (req,res)=>{
 
   res.json({success:true,data:result.rows[0]});
 
- }catch(e){
-  logger.error(e);
-  res.status(500).json({success:false,message:"Verification failed"});
- }
+  } catch (e) {
+    logger.error('Error in verifyPayment:', e);
+    res.status(500).json({ success: false, message: "Verification failed", error: e.message });
+  }
 };
 
 
