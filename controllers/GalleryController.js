@@ -20,7 +20,8 @@ const getPublicId = (url) => {
 ========================================================= */
 const insertGallery = asyncHandler(async (req, res) => {
 
-  const { trip_id, folder_name, image_title } = req.body;
+  const { trip_id, folder_name: rawFolderName, image_title } = req.body;
+  const folder_name = rawFolderName?.trim();
   const files = req.files;
 
   if (!trip_id || !folder_name || !files || files.length === 0)
@@ -62,7 +63,8 @@ const insertGallery = asyncHandler(async (req, res) => {
 ========================================================= */
 const updateGalleryById = asyncHandler(async (req,res)=>{
 
-  const { gallery_id, folder_name, image_title } = req.body;
+  const { gallery_id, folder_name: rawFolderName, image_title } = req.body;
+  const folder_name = rawFolderName?.trim();
   const files = req.files;
 
   if(!gallery_id)

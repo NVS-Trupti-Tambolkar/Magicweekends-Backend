@@ -13,10 +13,15 @@ async function runMigration() {
             path.join(__dirname, 'trip_weekend_schema.sql'),
             'utf8'
         );
+        const authSql = fs.readFileSync(
+            path.join(__dirname, 'auth_schema.sql'),
+            'utf8'
+        );
 
         console.log('🔄 Executing database migration...');
         await pool.query(bookingSql);
         await pool.query(tripSql);
+        await pool.query(authSql);
 
         console.log('✅ Database schema created successfully!');
         console.log('\n📋 Tables created/updated:');

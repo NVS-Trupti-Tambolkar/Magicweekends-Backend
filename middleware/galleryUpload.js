@@ -15,7 +15,7 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    const folderName = req.body.folder_name || req.body.existing_folder || 'default';
+    const folderName = (req.body.folder_name || req.body.existing_folder || 'default').trim();
     return {
       folder: `MagicWeekends/Gallery/${folderName}`,
       allowed_formats: ['jpg', 'png', 'jpeg', 'gif', 'webp'],

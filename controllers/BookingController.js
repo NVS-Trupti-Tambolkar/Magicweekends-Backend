@@ -20,14 +20,6 @@ const createBooking = async (req,res)=>{
   if(typeof travelers_data === 'string')
     travelers_data = JSON.parse(travelers_data);
 
-  // attach id proof images
-  if(req.files && Array.isArray(travelers_data)){
-    req.files.forEach(file=>{
-      const m = file.fieldname.match(/id_proof_image_(\d+)/);
-      if(m && travelers_data[m[1]])
-        travelers_data[m[1]].id_proof_image = file.secure_url;
-    });
-  }
 
   await client.query('BEGIN');
 

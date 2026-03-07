@@ -7,6 +7,7 @@ const Itineraries = require('./routes/ItineraryRoutes');
 const Gallery = require('./routes/galleryRoutes');
 const WeekendTrip = require('./routes/weekendRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
+const authRoutes = require('./routes/authRoutes');
 
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
@@ -74,6 +75,7 @@ app.use('/Itineraries', Itineraries);
 app.use('/Gallery', Gallery);
 app.use('/WeekendTrip', WeekendTrip);
 app.use('/Booking', bookingRoutes);
+app.use('/auth', authRoutes);
 
 /* =========================================================
    ERROR HANDLER

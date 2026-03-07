@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS trips (
     things_to_carry TEXT,
     max_group_size INTEGER,
     age_limit VARCHAR(100),
+    trip_date DATE,
     status BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     dateofmodification TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

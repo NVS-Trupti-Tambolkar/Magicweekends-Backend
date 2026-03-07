@@ -21,6 +21,37 @@ const getPublicIdFromUrl = (url) => {
 };
 
 /* =========================================================
+   Helper → save departure dates
+   ========================================================= */
+const saveDepartureDates = async (tripId, tripType, dates) => {
+    if (!dates) return;
+    
+    // dates can be an array or a comma-separated string
+    let dateArray = [];
+    if (Array.isArray(dates)) {
+      dateArray = dates;
+    } else if (typeof dates === 'string') {
+      dateArray = dates.split(',').map(d => d.trim()).filter(d => d !== '');
+    }
+  
+    if (dateArray.length === 0) return;
+  
+    // Delete existing ones first (for update)
+    await executeQuery(
+      "DELETE FROM trip_departure_dates WHERE trip_id=$1 AND trip_type=$2",
+      [tripId, tripType]
+    );
+  
+    // Insert new ones
+    for (const date of dateArray) {
+      await executeQuery(
+        "INSERT INTO trip_departure_dates (trip_id, trip_type, departure_date) VALUES ($1, $2, $3)",
+        [tripId, tripType, date]
+      );
+    }
+  };
+
+/* =========================================================
    INSERT WEEKEND TRIP
    ========================================================= */
 const insertWeekendTrip = asyncHandler(async (req, res) => {
@@ -29,7 +60,8 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
         title, duration, tours, price, difficulty, highlights,
         available_days, from_location, to_location,
         overview, things_to_carry, max_group_size,
-        age_limit, status
+        age_limit, status,
+        departure_dates
     } = req.body;
 
     let file = null;
@@ -75,10 +107,17 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
             (status === "true" || status === true)
         ]);
 
+        const newTrip = result.rows[0];
+
+        // Save multiple departure dates if provided
+        if (departure_dates) {
+            await saveDepartureDates(newTrip.id, 'weekend', departure_dates);
+        }
+
         res.status(201).json({
             success:true,
             message:"Weekend trip inserted successfully",
-            data:result.rows[0]
+            data:newTrip
         });
 
     } catch(err){
@@ -105,10 +144,21 @@ const getWeekendTrips = asyncHandler(async (req,res)=>{
         "SELECT * FROM weekendtrips WHERE deleted=B'0' ORDER BY created_at DESC"
     );
 
+    const trips = result.rows;
+
+    // Add departure dates for each trip
+    for (const trip of trips) {
+        const dateResult = await executeQuery(
+            "SELECT departure_date FROM trip_departure_dates WHERE trip_id = $1 AND trip_type = 'weekend' ORDER BY departure_date ASC",
+            [trip.id]
+        );
+        trip.departure_dates = dateResult.rows.map(r => r.departure_date);
+    }
+
     res.json({
         success:true,
-        count:result.rows.length,
-        data:result.rows
+        count:trips.length,
+        data:trips
     });
 });
 
@@ -127,7 +177,16 @@ const getWeekendTripById = asyncHandler(async (req,res)=>{
     if(!result.rows.length)
         return res.status(404).json({success:false,message:"Trip not found"});
 
-    res.json({success:true,data:result.rows[0]});
+    const trip = result.rows[0];
+
+    // Fetch departure dates
+    const datesResult = await executeQuery(
+        "SELECT departure_date FROM trip_departure_dates WHERE trip_id=$1 AND trip_type='weekend' ORDER BY departure_date ASC",
+        [id]
+    );
+    trip.departure_dates = datesResult.rows.map(r => r.departure_date);
+
+    res.json({success:true,data:trip});
 });
 
 /* =========================================================
@@ -206,6 +265,11 @@ const updateWeekendTrip = asyncHandler(async (req,res)=>{
         imageUrl,
         id
     ]);
+
+    // Update departure dates if provided
+    if (req.body.departure_dates) {
+        await saveDepartureDates(id, 'weekend', req.body.departure_dates);
+    }
 
     res.json({success:true,message:"Updated successfully",data:result.rows[0]});
 });
