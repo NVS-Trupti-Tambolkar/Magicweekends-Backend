@@ -18,6 +18,8 @@ const createBooking = async (req,res)=>{
   } = req.body;
 
   logger.info(`Creating booking for ${full_name} - Trip: ${trip_id}`);
+  logger.info(`Type of travelers_data: ${typeof travelers_data}`);
+  logger.info(`Content of travelers_data: ${JSON.stringify(travelers_data)}`);
   
   // Fix: Strictly stringify travelers_data to valid JSON string for JSONB column
   // This prevents the pg-driver from misformatting JS arrays as Postgres arrays {}
@@ -41,7 +43,7 @@ const createBooking = async (req,res)=>{
    (trip_id,trip_type,full_name,email,phone,travel_date,
     number_of_people,price_per_person,total_amount,payment_method,
     travelers_data,special_request,booking_status,payment_status)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending','pending')
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,'pending','pending')
    RETURNING *`,
    [
     trip_id, trip_type, full_name, email, phone, travel_date,
