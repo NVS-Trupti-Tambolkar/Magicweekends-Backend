@@ -17,8 +17,25 @@ const createBooking = async (req,res)=>{
    total_amount, payment_method, travelers_data, special_request
   } = req.body;
 
-  if(typeof travelers_data === 'string')
-    travelers_data = JSON.parse(travelers_data);
+  logger.info(`Creating booking for ${full_name} - Trip: ${trip_id}`);
+  
+  // Ensure travelers_data is a valid JSON string for Postgres
+  let travelersDataForDb = null;
+  if (travelers_data) {
+    try {
+      if (typeof travelers_data === 'string') {
+        // If it's already a string, validate it's valid JSON
+        JSON.parse(travelers_data);
+        travelersDataForDb = travelers_data;
+      } else {
+        // If it's an object/array, stringify it
+        travelersDataForDb = JSON.stringify(travelers_data);
+      }
+    } catch (err) {
+      logger.error('Invalid travelers_data formatting:', err);
+      return res.status(400).json({ success: false, message: "Invalid travelers data format" });
+    }
+  }
 
 
   await client.query('BEGIN');
@@ -36,7 +53,7 @@ const createBooking = async (req,res)=>{
     price_per_person || (total_amount/number_of_people),
     total_amount,
     payment_method || null,
-    travelers_data || null,
+    travelersDataForDb,
     special_request || null
    ]);
 
