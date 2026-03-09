@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const { executeQuery } = require("../config/db");
 const cloudinary = require('../config/cloudinary');
+const logger = require('../utils/logger');
 
 /* =========================================================
    HELPER → extract Cloudinary public_id from URL
@@ -145,6 +146,7 @@ const getWeekendTrips = asyncHandler(async (req,res)=>{
     );
 
     const trips = result.rows;
+    logger.info(`DEBUG: Fetched ${trips.length} weekend trips from DB.`);
 
     // Add departure dates for each trip
     for (const trip of trips) {
@@ -154,6 +156,8 @@ const getWeekendTrips = asyncHandler(async (req,res)=>{
         );
         trip.departure_dates = dateResult.rows.map(r => r.departure_date);
     }
+
+    logger.info("DEBUG: Weekend trips titles: " + trips.map(t => t.title).join(", "));
 
     res.json({
         success:true,

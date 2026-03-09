@@ -2,6 +2,10 @@ const { pool } = require('../config/db');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const asyncHandler = require('express-async-handler');
+const { OAuth2Client } = require('google-auth-library');
+const otpService = require('../services/otpService');
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Helper to hash password
 const hashPassword = (password) => {
@@ -17,7 +21,7 @@ const login = asyncHandler(async (req, res) => {
         throw new Error('Please provide username and password');
     }
 
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const result = await pool.query('SELECT id, username, email, password_hash, role FROM users WHERE username = $1', [username]);
     const user = result.rows[0];
 
     if (user && user.password_hash === hashPassword(password)) {
@@ -32,6 +36,7 @@ const login = asyncHandler(async (req, res) => {
             data: {
                 id: user.id,
                 username: user.username,
+                email: user.email,
                 role: user.role,
                 token
             }
@@ -51,16 +56,55 @@ const getMe = asyncHandler(async (req, res) => {
     });
 });
 
-const register = asyncHandler(async (req, res) => {
-    const { username, password, role } = req.body;
+const sendOTP = asyncHandler(async (req, res) => {
+    const { email } = req.body;
 
-    if (!username || !password) {
+    if (!email) {
         res.status(400);
-        throw new Error('Please provide username and password');
+        throw new Error('Please provide an email address');
     }
 
-    // Check if user exists
-    const userExists = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    // Check if user already exists
+    const userExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) {
+        res.status(400);
+        throw new Error('User already exists with this email');
+    }
+
+    const otp = otpService.generateOTP();
+    const isSent = await otpService.sendOTPEmail(email, otp);
+
+    if (isSent) {
+        otpService.storeOTP(email, otp);
+        res.status(200).json({ success: true, message: 'OTP sent successfully' });
+    } else {
+        res.status(500);
+        throw new Error('Failed to send OTP email');
+    }
+});
+
+const register = asyncHandler(async (req, res) => {
+    const { username, password, email, role, otp } = req.body;
+
+    if (!username || !password || !email) {
+        res.status(400);
+        throw new Error('Please provide username, password and email');
+    }
+
+    if (!otp) {
+        res.status(400);
+        throw new Error('Please provide the OTP sent to your email');
+    }
+
+    // Verify OTP
+    const isOtpValid = otpService.verifyOTP(email, otp);
+    if (!isOtpValid) {
+        res.status(400);
+        throw new Error('Invalid or expired OTP');
+    }
+
+    // Check if user exists (Double check)
+    const userExists = await pool.query('SELECT * FROM users WHERE username = $1 OR email = $2', [username, email]);
     if (userExists.rows.length > 0) {
         res.status(400);
         throw new Error('User already exists');
@@ -69,10 +113,9 @@ const register = asyncHandler(async (req, res) => {
     // Hash password
     const password_hash = hashPassword(password);
 
-    // Create user
     const result = await pool.query(
-        'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role',
-        [username, password_hash, role || 'staff']
+        'INSERT INTO users (username, password_hash, email, role) VALUES ($1, $2, $3, $4) RETURNING id, username, email, role',
+        [username, password_hash, email, role || 'user']
     );
 
     res.status(201).json({
@@ -81,8 +124,75 @@ const register = asyncHandler(async (req, res) => {
     });
 });
 
+const googleLogin = asyncHandler(async (req, res) => {
+    const { credential } = req.body;
+
+    if (!credential) {
+        res.status(400);
+        throw new Error('Google credential is required');
+    }
+
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken: credential,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        const { email, name, sub: google_id, picture } = payload;
+
+        // 1. Check if user already exists with this email
+        let result = await pool.query('SELECT id, username, email, role FROM users WHERE email = $1', [email]);
+        let user = result.rows[0];
+
+        // 2. If not, create a new user
+        if (!user) {
+            // Generate a random username if name is not available or taken
+            const baseUsername = name ? name.toLowerCase().replace(/\s+/g, '_') : 'user';
+            const randomSuffix = Math.floor(Math.random() * 1000);
+            const username = `${baseUsername}_${randomSuffix}`;
+            
+            // Dummy password for Google users (they'll use Google login anyway)
+            const dummyPassword = crypto.randomBytes(16).toString('hex');
+            const password_hash = hashPassword(dummyPassword);
+
+            const insertResult = await pool.query(
+                'INSERT INTO users (username, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, username, email, role',
+                [username, email, password_hash, 'user']
+            );
+            user = insertResult.rows[0];
+        }
+
+        // 3. Generate JWT
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role },
+            process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this',
+            { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+        );
+
+        res.json({
+            success: true,
+            data: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role,
+                picture, // Optional: return picture for frontend display
+                token
+            }
+        });
+
+    } catch (error) {
+        console.error("Google Login Error:", error);
+        res.status(401);
+        throw new Error('Google authentication failed');
+    }
+});
+
 module.exports = {
     login,
     getMe,
-    register
+    sendOTP,
+    register,
+    googleLogin
 };
