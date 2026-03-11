@@ -12,8 +12,8 @@ const {
 } = require('../controllers/BookingController');
 const bookingUploadMiddleware = require('../middleware/bookingUploadMiddleware');
 
-// Create new booking
-router.post('/bookings', bookingUploadMiddleware, createBooking);
+// Create new booking (JSON body — no file upload at this stage)
+router.post('/bookings', createBooking);
 
 // Get booking by ID
 router.get('/bookings/:id', getBookingById);
