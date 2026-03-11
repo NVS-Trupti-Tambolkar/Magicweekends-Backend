@@ -11,17 +11,18 @@ const createBooking = async (req,res)=>{
  const client = await pool.connect();
  try{
 
-  let {
+  const {
    trip_id, trip_type, full_name, email, phone,
    travel_date, number_of_people, price_per_person,
    total_amount, payment_method, travelers_data, special_request
   } = req.body;
 
-  logger.info(`Creating booking for ${full_name} - Trip: ${trip_id}`);
+  const requestId = Math.random().toString(36).substring(7);
+  logger.info(`[REQ-${requestId}] createBooking started for ${full_name} (Trip: ${trip_id}, Method: ${payment_method})`);
 
   // Check for Razorpay credentials
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    logger.error('CRITICAL: Razorpay API keys are missing in environment variables.');
+    logger.error(`[REQ-${requestId}] CRITICAL: Razorpay API keys missing.`);
     return res.status(500).json({
       success: false,
       message: "Payment gateway is not configured on the server. Please contact site administrator.",
@@ -108,7 +109,7 @@ const createBooking = async (req,res)=>{
 
   } catch (e) {
     await client.query('ROLLBACK');
-    logger.error('Error in createBooking:', e);
+    logger.error(`[REQ-${requestId}] Error in createBooking:`, e);
     
     // Better explanation for common errors
     let errorMsg = "Booking failed";
@@ -119,7 +120,7 @@ const createBooking = async (req,res)=>{
     res.status(500).json({ 
       success: false, 
       message: errorMsg, 
-      error: process.env.NODE_ENV === 'development' ? e.message : "Internal Server Error"
+      error: e.message || "Internal Server Error"
     });
   } finally {
     client.release();
@@ -132,12 +133,14 @@ const createBooking = async (req,res)=>{
    VERIFY PAYMENT (ONLY PLACE THAT SETS PAID)
    ========================================================= */
 const verifyPayment = async (req,res)=>{
- try{
+  const requestId = Math.random().toString(36).substring(7);
+  try{
 
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, booking_id } = req.body;
+  logger.info(`[REQ-${requestId}] verifyPayment started for booking ${booking_id}`);
 
   if (!process.env.RAZORPAY_KEY_SECRET) {
-    logger.error('CRITICAL: RAZORPAY_KEY_SECRET missing during verification.');
+    logger.error(`[REQ-${requestId}] CRITICAL: RAZORPAY_KEY_SECRET missing during verification.`);
     return res.status(500).json({
       success: false,
       message: "Payment verification failed due to server configuration error.",
