@@ -2,8 +2,8 @@
 const { Pool } = require('pg');
 const logger = console;
 
-// Your Neon PostgreSQL connection string - Using direct endpoint to avoid pooler DNS issues
-const connectionString = "postgresql://neondb_owner:npg_BCwoXK03sjYF@ep-patient-boat-a428xgfh.us-east-1.aws.neon.tech/neondb?sslmode=require";
+// Your Neon PostgreSQL connection string - using environment variable
+const connectionString = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_BCwoXK03sjYF@ep-patient-boat-a428xgfh.us-east-1.aws.neon.tech/neondb?sslmode=require";
 
 const pool = new Pool({
   connectionString: connectionString,
