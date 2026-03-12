@@ -189,10 +189,73 @@ const googleLogin = asyncHandler(async (req, res) => {
     }
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        res.status(400);
+        throw new Error('Please provide an email address');
+    }
+
+    // Check if user exists
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+        // Return 200 even if user doesn't exist to prevent email enumeration
+        return res.status(200).json({ success: true, message: 'If that email is registered, a password reset OTP will be sent.' });
+    }
+
+    const otp = otpService.generateOTP();
+    const isSent = await otpService.sendOTPEmail(email, otp);
+
+    if (isSent) {
+        otpService.storeOTP(email, otp);
+        res.status(200).json({ success: true, message: 'Password reset OTP sent successfully' });
+    } else {
+        res.status(500);
+        throw new Error('Failed to send password reset email');
+    }
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+        res.status(400);
+        throw new Error('Please provide email, OTP, and new password');
+    }
+
+    if (newPassword.length < 6) {
+        res.status(400);
+        throw new Error('Password must be at least 6 characters long');
+    }
+
+    // Verify OTP
+    const isOtpValid = otpService.verifyOTP(email, otp);
+    if (!isOtpValid) {
+        res.status(400);
+        throw new Error('Invalid or expired OTP');
+    }
+
+    // Check if user exists
+    const result = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+
+    // Update password
+    const password_hash = hashPassword(newPassword);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE email = $2', [password_hash, email]);
+
+    res.status(200).json({ success: true, message: 'Password has been reset successfully' });
+});
+
 module.exports = {
     login,
     getMe,
     sendOTP,
     register,
-    googleLogin
+    googleLogin,
+    forgotPassword,
+    resetPassword
 };
