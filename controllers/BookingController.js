@@ -8,8 +8,9 @@ const crypto = require('crypto');
    CREATE BOOKING
    ========================================================= */
 const createBooking = async (req,res)=>{
- const client = await pool.connect();
- try{
+  let client;
+  try{
+   client = await pool.connect();
 
   const {
    trip_id, trip_type, full_name, email, phone,
@@ -109,7 +110,9 @@ const createBooking = async (req,res)=>{
   });
 
   } catch (e) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     logger.error(`[REQ-${requestId}] Error in createBooking:`, e);
     
     // Better explanation for common errors
@@ -124,7 +127,9 @@ const createBooking = async (req,res)=>{
       error: e.message || "Internal Server Error"
     });
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 };
 
