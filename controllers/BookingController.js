@@ -9,6 +9,7 @@ const crypto = require('crypto');
    ========================================================= */
 const createBooking = async (req,res)=>{
   let client;
+  const requestId = Math.random().toString(36).substring(7);
   try{
    client = await pool.connect();
 
@@ -19,7 +20,6 @@ const createBooking = async (req,res)=>{
   } = req.body;
   let { total_amount } = req.body;
 
-  const requestId = Math.random().toString(36).substring(7);
   logger.info(`[REQ-${requestId}] createBooking started for ${full_name} (Trip: ${trip_id}, Method: ${payment_method})`);
 
   // Check for Razorpay credentials
