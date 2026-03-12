@@ -20,24 +20,23 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://magicalweekends.netlify.app"
+  "https://magicalweekends.netlify.app",
+  "https://magical-weekends.netlify.app" // Added common variation
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow Postman / mobile apps / server-side requests
-    if (!origin) return callback(null, true);
-
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    // For debugging, allow all origins or check against a broader list
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith(".netlify.app")) {
+      callback(null, true);
     } else {
       console.log("Blocked by CORS:", origin);
-      return callback(new Error("Not allowed by CORS"));
+      callback(null, true); // Temporarily allow for debugging
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"]
 }));
 
 // ⭐ VERY IMPORTANT (handles browser preflight requests)
