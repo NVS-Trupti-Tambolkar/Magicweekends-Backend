@@ -121,10 +121,13 @@ const createBooking = async (req,res)=>{
       errorMsg = "Invalid payment method. Only 'paytm', 'gpay', 'bank_transfer', and 'cash' are supported.";
     }
 
+    // Dump entire error so it shows up on the frontend popup
+    const detailedError = e.message || (e.error ? e.error.description : JSON.stringify(e));
+
     res.status(500).json({ 
       success: false, 
       message: errorMsg, 
-      error: e.message || "Internal Server Error"
+      error: detailedError || "Internal Server Error"
     });
   } finally {
     if (client) {
