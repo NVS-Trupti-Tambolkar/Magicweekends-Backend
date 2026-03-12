@@ -14,8 +14,9 @@ const createBooking = async (req,res)=>{
   const {
    trip_id, trip_type, full_name, email, phone,
    travel_date, number_of_people, price_per_person,
-   total_amount, payment_method, travelers_data, special_request
+   payment_method, travelers_data, special_request
   } = req.body;
+  let { total_amount } = req.body;
 
   const requestId = Math.random().toString(36).substring(7);
   logger.info(`[REQ-${requestId}] createBooking started for ${full_name} (Trip: ${trip_id}, Method: ${payment_method})`);
