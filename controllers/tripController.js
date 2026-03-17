@@ -67,7 +67,9 @@ const insertTripDirect = asyncHandler(async (req, res) => {
     age_limit,
     status,
     trip_date,
-    departure_dates
+    departure_dates,
+    inclusions,
+    exclusions
   } = req.body;
 
   const file = req.file || (req.files?.uploadimage?.[0] || req.files?.image?.[0]);
@@ -82,13 +84,15 @@ const insertTripDirect = asyncHandler(async (req, res) => {
   const imageUrl = file.path || file.secure_url || '';   // ✔ Robust Cloudinary URL extraction
 
   const result = await executeQuery(
-    `INSERT INTO trips (
+      `INSERT INTO trips (
         title,duration,uploadimage,tours,price,difficulty,highlights,
         from_location,to_location,overview,things_to_carry,
-        max_group_size,age_limit,status,trip_date,created_at,dateofmodification,deleted
+        max_group_size,age_limit,status,trip_date,created_at,dateofmodification,deleted,
+        inclusions,exclusions
      ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,
-        $8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW(),B'0'
+        $8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW(),B'0',
+        $16::jsonb,$17::jsonb
      ) RETURNING *`,
     [
       title,
@@ -105,7 +109,9 @@ const insertTripDirect = asyncHandler(async (req, res) => {
       max_group_size ? parseInt(max_group_size) : null,
       age_limit || null,
       (status === "true" || status === true),
-      trip_date || null
+      trip_date || null,
+      inclusions ? (typeof inclusions === 'string' ? inclusions : JSON.stringify(inclusions)) : '[]',
+      exclusions ? (typeof exclusions === 'string' ? exclusions : JSON.stringify(exclusions)) : '[]'
     ]
   );
 
@@ -162,13 +168,25 @@ const getTrips = asyncHandler(async (req, res) => {
   const result = await executeQuery(query, params);
   const trips = result.rows;
 
-  // Add departure dates for each trip
-  for (const trip of trips) {
+  // Add departure dates for each trip (Optimized to avoid N+1 queries)
+  if (trips.length > 0) {
+    const tripIds = trips.map(t => t.id);
     const dateResult = await executeQuery(
-      "SELECT departure_date FROM trip_departure_dates WHERE trip_id = $1 AND trip_type = 'normal' ORDER BY departure_date ASC",
-      [trip.id]
+      "SELECT trip_id, departure_date FROM trip_departure_dates WHERE trip_id = ANY($1) AND trip_type = 'normal' ORDER BY departure_date ASC",
+      [tripIds]
     );
-    trip.departure_dates = dateResult.rows.map(r => r.departure_date);
+
+    // Group dates by trip_id
+    const datesMap = dateResult.rows.reduce((acc, curr) => {
+      if (!acc[curr.trip_id]) acc[curr.trip_id] = [];
+      acc[curr.trip_id].push(curr.departure_date);
+      return acc;
+    }, {});
+
+    // Assign dates back to trips
+    trips.forEach(trip => {
+      trip.departure_dates = datesMap[trip.id] || [];
+    });
   }
 
   res.json({
@@ -253,8 +271,10 @@ const updateTrip = asyncHandler(async (req, res) => {
       status=COALESCE($13,status),
       uploadimage=COALESCE($14,uploadimage),
       trip_date=COALESCE($15,trip_date),
+      inclusions=COALESCE($16::jsonb,inclusions),
+      exclusions=COALESCE($17::jsonb,exclusions),
       dateofmodification=NOW()
-     WHERE id=$16 RETURNING *`,
+     WHERE id=$18 RETURNING *`,
     [
       req.body.title,
       req.body.duration,
@@ -271,6 +291,8 @@ const updateTrip = asyncHandler(async (req, res) => {
       req.body.status,
       imageUrl,
       req.body.trip_date,
+      req.body.inclusions ? (typeof req.body.inclusions === 'string' ? req.body.inclusions : JSON.stringify(req.body.inclusions)) : null,
+      req.body.exclusions ? (typeof req.body.exclusions === 'string' ? req.body.exclusions : JSON.stringify(req.body.exclusions)) : null,
       id
     ]
   );

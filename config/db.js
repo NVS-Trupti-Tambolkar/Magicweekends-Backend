@@ -12,7 +12,8 @@ const pool = new Pool({
   },
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 20000, // Increased to 20s
+  maxUses: 7500, // Close and replace connection after 7500 uses
 });
 
 // Initialize database connection
@@ -47,6 +48,12 @@ pool.on('error', (err) => {
 // MSSQL-style stored procedure execution
 async function executeStoredProcedure(procedureName, params = []) {
   const client = await pool.connect();
+  
+  // Prevent unhandled 'error' event on client if it disconnects while in use
+  const errorHandler = (err) => {
+    logger.error('Database client error during stored procedure execution:', err);
+  };
+  client.on('error', errorHandler);
   
   try {
     // Extract values from params array
@@ -85,6 +92,7 @@ async function executeStoredProcedure(procedureName, params = []) {
     logger.error(`Error in ${procedureName}:`, error);
     throw error;
   } finally {
+    client.removeListener('error', errorHandler);
     client.release();
   }
 }
@@ -92,6 +100,13 @@ async function executeStoredProcedure(procedureName, params = []) {
 // Alternative: Simple query execution
 async function executeQuery(text, params = []) {
   const client = await pool.connect();
+  
+  // Prevent unhandled 'error' event on client if it disconnects while in use
+  const errorHandler = (err) => {
+    logger.error('Database client error during query execution:', err);
+  };
+  client.on('error', errorHandler);
+
   try {
     const result = await client.query(text, params);
     return {
@@ -102,6 +117,7 @@ async function executeQuery(text, params = []) {
     logger.error('Query error:', error);
     throw error;
   } finally {
+    client.removeListener('error', errorHandler);
     client.release();
   }
 }

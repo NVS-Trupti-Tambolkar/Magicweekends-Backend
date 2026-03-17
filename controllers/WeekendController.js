@@ -60,9 +60,9 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
     const {
         title, duration, tours, price, difficulty, highlights,
         available_days, from_location, to_location,
-        overview, things_to_carry, max_group_size,
         age_limit, status,
-        departure_dates
+        departure_dates,
+        inclusions, exclusions
     } = req.body;
 
     let file = null;
@@ -86,9 +86,11 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
         `INSERT INTO weekendtrips (
             title,duration,uploadimage,tours,price,difficulty,highlights,
             available_days,from_location,to_location,overview,things_to_carry,
-            max_group_size,age_limit,status,created_at,dateofmodification,deleted
+            age_limit,status,created_at,dateofmodification,deleted,
+            inclusions,exclusions
         ) VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW(),B'0'
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW(),B'0',
+            $16::jsonb,$17::jsonb
         ) RETURNING *`,
         [
             title,
@@ -102,10 +104,11 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
             from_location || null,
             to_location || null,
             overview || null,
-            things_to_carry || null,
             max_group_size ? parseInt(max_group_size) : null,
             age_limit || null,
-            (status === "true" || status === true)
+            (status === "true" || status === true),
+            inclusions ? (typeof inclusions === 'string' ? inclusions : JSON.stringify(inclusions)) : '[]',
+            exclusions ? (typeof exclusions === 'string' ? exclusions : JSON.stringify(exclusions)) : '[]'
         ]);
 
         const newTrip = result.rows[0];
@@ -148,13 +151,25 @@ const getWeekendTrips = asyncHandler(async (req,res)=>{
     const trips = result.rows;
     logger.info(`DEBUG: Fetched ${trips.length} weekend trips from DB.`);
 
-    // Add departure dates for each trip
-    for (const trip of trips) {
+    // Add departure dates for each trip (Optimized to avoid N+1 queries)
+    if (trips.length > 0) {
+        const tripIds = trips.map(t => t.id);
         const dateResult = await executeQuery(
-            "SELECT departure_date FROM trip_departure_dates WHERE trip_id = $1 AND trip_type = 'weekend' ORDER BY departure_date ASC",
-            [trip.id]
+            "SELECT trip_id, departure_date FROM trip_departure_dates WHERE trip_id = ANY($1) AND trip_type = 'weekend' ORDER BY departure_date ASC",
+            [tripIds]
         );
-        trip.departure_dates = dateResult.rows.map(r => r.departure_date);
+
+        // Group dates by trip_id
+        const datesMap = dateResult.rows.reduce((acc, curr) => {
+            if (!acc[curr.trip_id]) acc[curr.trip_id] = [];
+            acc[curr.trip_id].push(curr.departure_date);
+            return acc;
+        }, {});
+
+        // Assign dates back to trips
+        trips.forEach(trip => {
+            trip.departure_dates = datesMap[trip.id] || [];
+        });
     }
 
     logger.info("DEBUG: Weekend trips titles: " + trips.map(t => t.title).join(", "));
@@ -249,8 +264,10 @@ const updateWeekendTrip = asyncHandler(async (req,res)=>{
         age_limit=COALESCE($13,age_limit),
         status=COALESCE($14,status),
         uploadimage=$15,
+        inclusions=COALESCE($16::jsonb,inclusions),
+        exclusions=COALESCE($17::jsonb,exclusions),
         dateofmodification=NOW()
-     WHERE id=$16 RETURNING *`,
+     WHERE id=$18 RETURNING *`,
     [
         req.body.title,
         req.body.duration,
@@ -267,6 +284,8 @@ const updateWeekendTrip = asyncHandler(async (req,res)=>{
         req.body.age_limit,
         req.body.status,
         imageUrl,
+        req.body.inclusions ? (typeof req.body.inclusions === 'string' ? req.body.inclusions : JSON.stringify(req.body.inclusions)) : null,
+        req.body.exclusions ? (typeof req.body.exclusions === 'string' ? req.body.exclusions : JSON.stringify(req.body.exclusions)) : null,
         id
     ]);
 
