@@ -69,7 +69,7 @@ const insertWeekendTrip = asyncHandler(async (req, res) => {
     const imageFile = req.files?.uploadimage?.[0] || req.files?.image?.[0];
     const brochureFile = req.files?.brochure?.[0];
 
-    if (!title || !duration || !tours || !price || !difficulty || !highlights || !available_days || !imageFile) {
+    if (!title || !duration || !tours || !price || !difficulty || !available_days || !imageFile) {
         return res.status(400).json({
             success:false,
             message:"All required fields including image are mandatory"
@@ -342,69 +342,91 @@ const deleteWeekendTrip = asyncHandler(async (req,res)=>{
    DOWNLOAD WEEKEND BROCHURE
    ========================================================= */
 const downloadWeekendBrochure = asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    
-    if (!id) {
-        return res.status(400).json({ success: false, message: "Trip ID is required" });
-    }
-
-    const result = await executeQuery(
-        "SELECT brochure_url, title FROM weekendtrips WHERE id = $1",
-        [id]
-    );
-
-    if (result.rows.length === 0 || !result.rows[0].brochure_url) {
-        return res.status(404).json({ success: false, message: "Brochure not found for this trip" });
-    }
-
-    const url = result.rows[0].brochure_url;
-    const isRaw = url.includes('/raw/');
-    
-    // Extract public_id and version correctly
-    const urlParts = url.split('/');
-    const uploadIndex = urlParts.indexOf('upload');
-    const publicIdWithVersion = urlParts.slice(uploadIndex + 1).join('/');
-    const version = urlParts.find(p => p.startsWith('v') && !isNaN(p.substring(1)))?.substring(1);
-    
-    // For 'image' type, public_id should NOT include the extension.
-    // For 'raw' type, public_id SHOULD include the extension.
-    let publicId = publicIdWithVersion.split('/').slice(1).join('/');
-    if (!isRaw && publicId.endsWith('.pdf')) {
-        publicId = publicId.substring(0, publicId.lastIndexOf('.pdf'));
-    }
-
-    const originalTitle = result.rows[0].title || 'Weekend_Trip';
-    const fileName = `${originalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_brochure.pdf`;
-
-    console.log(`DEBUG: Generating private download URL weekend: ${publicId} (type: ${isRaw ? 'raw' : 'image'})`);
-
-    const signedUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
-        resource_type: isRaw ? 'raw' : 'image',
-        type: 'upload',
-        attachment: true
-    });
-
-    console.log(`DEBUG: Streaming weekend from signed URL: ${signedUrl}`);
-
-    https.get(signedUrl, (cloudinaryRes) => {
-        if (cloudinaryRes.statusCode !== 200) {
-            console.error(`Cloudinary returned ${cloudinaryRes.statusCode}`);
-            return res.status(500).json({ 
-                success: false, 
-                message: "Failed to fetch brochure from cloud storage" 
-            });
+    try {
+        const { id } = req.params;
+        
+        if (!id) {
+            return res.status(400).json({ success: false, message: "Weekend Trip ID is required" });
         }
 
-        // Set headers for forced download
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Type', 'application/pdf');
+        const result = await executeQuery(
+            "SELECT brochure_url, title FROM weekendtrips WHERE id = $1",
+            [id]
+        );
 
-        // Pipe the response from Cloudinary directly to the client
-        cloudinaryRes.pipe(res);
-    }).on('error', (err) => {
-        console.error("Error streaming brochure:", err);
-        res.status(500).json({ success: false, message: "Error downloading brochure" });
-    });
+        if (result.rows.length === 0 || !result.rows[0].brochure_url) {
+            return res.status(404).json({ success: false, message: "Brochure not found for this trip" });
+        }
+
+        const url = result.rows[0].brochure_url;
+        
+        console.log(`DEBUG: Processing brochure download for Weekend Trip ID: ${id}`);
+        console.log(`DEBUG: Original URL: ${url}`);
+
+        let publicId = '';
+        const isRaw = url.includes('/raw/');
+
+        try {
+            const uploadIndex = url.indexOf('/upload/');
+            if (uploadIndex !== -1) {
+                let pathAfterUpload = url.substring(uploadIndex + 8);
+                const parts = pathAfterUpload.split('/');
+                
+                // Robustly skip version number if present (starts with 'v' followed by digits)
+                if (parts[0].startsWith('v') && !isNaN(parts[0].substring(1))) {
+                    publicId = parts.slice(1).join('/');
+                    console.log(`DEBUG: Detected version folder: ${parts[0]}`);
+                } else {
+                    publicId = parts.join('/');
+                    console.log(`DEBUG: No version folder detected or non-standard format.`);
+                }
+                
+                // For 'image' resource type (often default for PDFs), Cloudinary expects publicId WITHOUT extension
+                if (!isRaw && publicId.toLowerCase().endsWith('.pdf')) {
+                    publicId = publicId.substring(0, publicId.lastIndexOf('.pdf'));
+                }
+            } else {
+                console.error(`ERROR: Could not find '/upload/' in URL: ${url}`);
+                return res.status(400).json({ success: false, message: "Invalid brochure URL format" });
+            }
+        } catch (err) {
+            console.error("ERROR: Parsing Cloudinary URL failed:", err);
+            return res.status(500).json({ success: false, message: "Error processing storage path", details: err.message });
+        }
+
+        const originalTitle = result.rows[0].title || 'Weekend_Trip';
+        const fileName = `${originalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_brochure.pdf`;
+
+        console.log(`DEBUG: Requesting signed download for Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
+
+        let signedUrl;
+        try {
+            signedUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
+                resource_type: isRaw ? 'raw' : 'image',
+                type: 'upload',
+                attachment: true
+            });
+        } catch (err) {
+            console.error("ERROR: Failed to generate signed URL from Cloudinary SDK:", err.message);
+            return res.status(500).json({ success: false, message: "Cloud storage signing failed", details: err.message });
+        }
+
+        console.log(`DEBUG: Redirecting weekend client to signed URL: ${signedUrl}`);
+
+        // Using direct redirect is more robust for production (Netlify/Render/Vercel)
+        // than server-side streaming. Cloudinary handles the content-disposition
+        // and streaming through its global CDN.
+        return res.redirect(signedUrl);
+
+    } catch (error) {
+        console.error("CRITICAL ERROR in downloadWeekendBrochure:", error);
+        return res.status(500).json({
+            success: false,
+            message: "An unexpected error occurred in the weekend brochure download controller.",
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
 });
 
 module.exports = {
