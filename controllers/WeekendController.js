@@ -372,6 +372,15 @@ const downloadWeekendBrochure = asyncHandler(async (req, res) => {
             return res.redirect(url);
         }
 
+        // --- CONFIGURATION CHECK ---
+        if (!process.env.CLOUDINARY_API_SECRET) {
+            console.error("CRITICAL ERROR: CLOUDINARY_API_SECRET is missing from environment variables.");
+            return res.status(500).json({ 
+                success: false, 
+                message: "Server configuration error: Cloudinary API Secret is missing. Please add it to your Render dashboard environment variables." 
+            });
+        }
+
         // --- CLOUDINARY LOGIC ---
         try {
             const uploadIndex = url.indexOf('/upload/');
@@ -393,35 +402,28 @@ const downloadWeekendBrochure = asyncHandler(async (req, res) => {
             }
 
             if (publicId) {
-                console.log(`DEBUG: Generated Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
+                console.log(`DEBUG: Requesting signed download for Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
                 
-                // Use cloudinary.url with fl_attachment.
-                const downloadUrl = cloudinary.url(publicId, {
+                // Use the official private_download_url.
+                const signedUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
                     resource_type: isRaw ? 'raw' : 'image',
-                    flags: 'attachment',
-                    format: isRaw ? undefined : 'pdf',
-                    secure: true,
-                    type: 'upload'
+                    type: 'upload',
+                    attachment: true
                 });
 
-                console.log(`DEBUG: Redirecting to Cloudinary generated URL: ${downloadUrl}`);
-                return res.redirect(downloadUrl);
+                console.log(`DEBUG: Redirecting to signed Cloudinary API URL: ${signedUrl}`);
+                return res.redirect(signedUrl);
+            } else {
+                throw new Error("Could not extract publicId from URL");
             }
-        } catch (sdkErr) {
-            console.error("WARNING: Cloudinary SDK URL generation failed, using manual fallback:", sdkErr.message);
-        }
-
-        // --- ROBUST MANUAL FALLBACK ---
-        try {
-            let fallbackUrl = url;
-            if (url.includes('/upload/') && !url.includes('fl_attachment')) {
-                fallbackUrl = url.replace('/upload/', '/upload/fl_attachment/');
-            }
-            console.log(`DEBUG: Redirecting to manual fallback URL: ${fallbackUrl}`);
-            return res.redirect(fallbackUrl);
-        } catch (fallbackErr) {
-            console.error("ERROR: Manual fallback failed:", fallbackErr.message);
-            return res.redirect(url);
+        } catch (err) {
+            console.error("ERROR: Failed to generate signed URL:", err.message);
+            return res.status(500).json({ 
+                success: false, 
+                message: "Cloud storage signing failed", 
+                details: err.message,
+                tip: "Ensure your Cloudinary credentials are correct and that the asset exists."
+            });
         }
 
     } catch (error) {
