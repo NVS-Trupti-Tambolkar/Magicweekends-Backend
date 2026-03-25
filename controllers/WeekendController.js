@@ -404,11 +404,15 @@ const downloadWeekendBrochure = asyncHandler(async (req, res) => {
             if (publicId) {
                 console.log(`DEBUG: Requesting signed download for Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
                 
+                // Format a nice filename from the trip title
+                const originalTitle = result.rows[0].title || 'Weekend_Trip';
+                const cleanFileName = `${originalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_brochure.pdf`;
+
                 // Use the official private_download_url.
                 const signedUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
                     resource_type: isRaw ? 'raw' : 'image',
                     type: 'upload',
-                    attachment: true
+                    attachment: cleanFileName
                 });
 
                 console.log(`DEBUG: Redirecting to signed Cloudinary API URL: ${signedUrl}`);
