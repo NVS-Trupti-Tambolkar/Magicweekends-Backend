@@ -365,66 +365,71 @@ const downloadWeekendBrochure = asyncHandler(async (req, res) => {
 
         let publicId = '';
         const isRaw = url.includes('/raw/');
+        const isCloudinary = url.includes('res.cloudinary.com');
 
+        if (!isCloudinary) {
+            console.log(`DEBUG: Non-Cloudinary URL detected, redirecting directly: ${url}`);
+            return res.redirect(url);
+        }
+
+        // --- CLOUDINARY LOGIC ---
         try {
             const uploadIndex = url.indexOf('/upload/');
             if (uploadIndex !== -1) {
                 let pathAfterUpload = url.substring(uploadIndex + 8);
                 const parts = pathAfterUpload.split('/');
                 
-                // Robustly skip version number if present (starts with 'v' followed by digits)
+                // Skip version number if present
                 if (parts[0].startsWith('v') && !isNaN(parts[0].substring(1))) {
                     publicId = parts.slice(1).join('/');
-                    console.log(`DEBUG: Detected version folder: ${parts[0]}`);
                 } else {
                     publicId = parts.join('/');
-                    console.log(`DEBUG: No version folder detected or non-standard format.`);
                 }
                 
-                // For 'image' resource type (often default for PDFs), Cloudinary expects publicId WITHOUT extension
+                // Remove extension for 'image' resource type
                 if (!isRaw && publicId.toLowerCase().endsWith('.pdf')) {
                     publicId = publicId.substring(0, publicId.lastIndexOf('.pdf'));
                 }
-            } else {
-                console.error(`ERROR: Could not find '/upload/' in URL: ${url}`);
-                return res.status(400).json({ success: false, message: "Invalid brochure URL format" });
             }
-        } catch (err) {
-            console.error("ERROR: Parsing Cloudinary URL failed:", err);
-            return res.status(500).json({ success: false, message: "Error processing storage path", details: err.message });
+
+            if (publicId) {
+                console.log(`DEBUG: Generated Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
+                
+                // Use cloudinary.url with fl_attachment.
+                const downloadUrl = cloudinary.url(publicId, {
+                    resource_type: isRaw ? 'raw' : 'image',
+                    flags: 'attachment',
+                    format: isRaw ? undefined : 'pdf',
+                    secure: true,
+                    type: 'upload'
+                });
+
+                console.log(`DEBUG: Redirecting to Cloudinary generated URL: ${downloadUrl}`);
+                return res.redirect(downloadUrl);
+            }
+        } catch (sdkErr) {
+            console.error("WARNING: Cloudinary SDK URL generation failed, using manual fallback:", sdkErr.message);
         }
 
-        const originalTitle = result.rows[0].title || 'Weekend_Trip';
-        const fileName = `${originalTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_brochure.pdf`;
-
-        console.log(`DEBUG: Requesting signed download for Public ID: "${publicId}" (Resource Type: ${isRaw ? 'raw' : 'image'})`);
-
-        let signedUrl;
+        // --- ROBUST MANUAL FALLBACK ---
         try {
-            signedUrl = cloudinary.utils.private_download_url(publicId, 'pdf', {
-                resource_type: isRaw ? 'raw' : 'image',
-                type: 'upload',
-                attachment: true
-            });
-        } catch (err) {
-            console.error("ERROR: Failed to generate signed URL from Cloudinary SDK:", err.message);
-            return res.status(500).json({ success: false, message: "Cloud storage signing failed", details: err.message });
+            let fallbackUrl = url;
+            if (url.includes('/upload/') && !url.includes('fl_attachment')) {
+                fallbackUrl = url.replace('/upload/', '/upload/fl_attachment/');
+            }
+            console.log(`DEBUG: Redirecting to manual fallback URL: ${fallbackUrl}`);
+            return res.redirect(fallbackUrl);
+        } catch (fallbackErr) {
+            console.error("ERROR: Manual fallback failed:", fallbackErr.message);
+            return res.redirect(url);
         }
-
-        console.log(`DEBUG: Redirecting weekend client to signed URL: ${signedUrl}`);
-
-        // Using direct redirect is more robust for production (Netlify/Render/Vercel)
-        // than server-side streaming. Cloudinary handles the content-disposition
-        // and streaming through its global CDN.
-        return res.redirect(signedUrl);
 
     } catch (error) {
         console.error("CRITICAL ERROR in downloadWeekendBrochure:", error);
         return res.status(500).json({
             success: false,
             message: "An unexpected error occurred in the weekend brochure download controller.",
-            details: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            details: error.message
         });
     }
 });
