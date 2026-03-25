@@ -12,6 +12,11 @@ const generateOTP = () => {
 // Send OTP via Email
 const sendOTPEmail = async (email, otp) => {
     try {
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            console.error('ERROR: EMAIL_USER or EMAIL_PASS environment variables are missing.');
+            throw new Error('Email server configuration is incomplete (missing credentials).');
+        }
+
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
@@ -29,10 +34,10 @@ const sendOTPEmail = async (email, otp) => {
 
         const info = await transporter.sendMail(mailOptions);
         console.log('OTP Email sent: ' + info.response);
-        return true;
+        return { success: true };
     } catch (error) {
-        console.error('Error sending OTP email:', error);
-        return false;
+        console.error('Error sending OTP email:', error.message);
+        return { success: false, error: error.message };
     }
 };
 

@@ -72,14 +72,14 @@ const sendOTP = asyncHandler(async (req, res) => {
     }
 
     const otp = otpService.generateOTP();
-    const isSent = await otpService.sendOTPEmail(email, otp);
+    const sendResult = await otpService.sendOTPEmail(email, otp);
 
-    if (isSent) {
+    if (sendResult.success) {
         otpService.storeOTP(email, otp);
         res.status(200).json({ success: true, message: 'OTP sent successfully' });
     } else {
         res.status(500);
-        throw new Error('Failed to send OTP email');
+        throw new Error(`Failed to send OTP email: ${sendResult.error || 'Unknown error'}`);
     }
 });
 
@@ -205,14 +205,14 @@ const forgotPassword = asyncHandler(async (req, res) => {
     }
 
     const otp = otpService.generateOTP();
-    const isSent = await otpService.sendOTPEmail(email, otp);
+    const sendResult = await otpService.sendOTPEmail(email, otp);
 
-    if (isSent) {
+    if (sendResult.success) {
         otpService.storeOTP(email, otp);
         res.status(200).json({ success: true, message: 'Password reset OTP sent successfully' });
     } else {
         res.status(500);
-        throw new Error('Failed to send password reset email');
+        throw new Error(`Failed to send password reset email: ${sendResult.error || 'Unknown error'}`);
     }
 });
 
